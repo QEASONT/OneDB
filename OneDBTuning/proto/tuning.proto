@@ -1,0 +1,41 @@
+syntax = "proto3";
+package org.apache.spark.sql;
+
+// The service definition.
+service Greeter {
+  // Sends a request with specific parameters and receives three double values.
+  rpc GetPerformanceMetrics (PerformanceRequest) returns (PerformanceReply) {}
+  rpc SayHello (HelloRequest) returns (HelloReply) {}
+}
+
+// The request message containing the specific parameters.
+message PerformanceRequest {
+  // The sample size parameter.
+  int64 sample_size = 1;  // 1L * 10 * 1024 * 1024
+  // The global indexed pivot count parameter.
+  int32 global_indexed_pivot_count = 2; // 9
+  // The RTREE global max entries per node parameter.
+  int32 rtree_global_max_entries_per_node = 3; // 5
+  // The RTREE local max entries per node parameter.
+  int32 rtree_local_max_entries_per_node = 4; // 5
+  // The RTREE global number of partitions parameter.
+  int32 rtree_global_num_partitions = 5; // 20
+  // The RTREE local number of partitions parameter.
+  int32 rtree_local_num_partitions = 6; // 20
+}
+
+// The response message containing the performance metrics.
+message PerformanceReply {
+  // The construction time.
+  double construction_time = 1;
+  // The range search time.
+  double range_search_time = 2;
+  // The knn average time.
+  double knn_average_time = 3;
+}
+message HelloRequest {
+  string name = 1;
+}
+message HelloReply {
+  string message = 1;
+}
