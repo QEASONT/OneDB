@@ -7,7 +7,6 @@
 ### Key Features:
 - **Multi-Metric Weight Learning:** A lightweight learning model captures the importance of different modalities dynamically.
 - **Dual-Layer Indexing:** A two-level index structure ensures both global partitioning and optimized local search.
-- **SQL Interface:** Supports user-friendly Spark SQL extensions for similarity search.
 - **End-to-End Parameter Tuning:** Deep reinforcement learning optimizes system performance automatically.
 
 ---
@@ -103,5 +102,4 @@ Datasets are stored in **TXT** format and can be accessed from HDFS or a local d
 ## License
 
 This project follows the ACM Copyright policy for SIGMOD Conference works. For personal or classroom use, copying is permitted without fee. Redistribution for commercial purposes requires specific permission from ACM.
-
 
