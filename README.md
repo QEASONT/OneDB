@@ -101,5 +101,5 @@ Datasets are stored in **TXT** format and can be accessed from HDFS or a local d
 
 ## License
 
-This project follows the ACM Copyright policy for SIGMOD Conference works. For personal or classroom use, copying is permitted without fee. Redistribution for commercial purposes requires specific permission from ACM.
+This project follows the ACM Copyright policy. For personal or classroom use, copying is permitted without fee. Redistribution for commercial purposes requires specific permission from ACM.
 
