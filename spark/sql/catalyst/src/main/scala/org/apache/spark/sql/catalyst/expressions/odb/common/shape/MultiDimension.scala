@@ -78,7 +78,7 @@ case class MultiDimension(low: Point[Any], high: Point[Any]) extends Shape {
     true
   }
 
-  override def minDist(other: Any, queryM: Array[(Int, Int)] = null): Double = {
+  override def minDist(other: Any, queryM: Array[(Double, Int)] = null): Double = {
     other match {
       case p: Point[Any] => minDistPoint(p, queryM)
       case mbr: MultiDimension => minDistRect(mbr, queryM)
@@ -86,7 +86,7 @@ case class MultiDimension(low: Point[Any], high: Point[Any]) extends Shape {
     }
   }
 
-  def minDistPoint(p: Point[Any], queryM: Array[(Int, Int)] = null): Double = {
+  def minDistPoint(p: Point[Any], queryM: Array[(Double, Int)] = null): Double = {
 
     require(low.coord.asInstanceOf[Array[Double]].length == p.coord.asInstanceOf[Array[Double]].length)
     var ans = 0.0
@@ -112,7 +112,7 @@ case class MultiDimension(low: Point[Any], high: Point[Any]) extends Shape {
     Math.sqrt(ans)
   }
 
-  def minDistRect(other: MultiDimension, queryM: Array[(Int, Int)] = null): Double = {
+  def minDistRect(other: MultiDimension, queryM: Array[(Double, Int)] = null): Double = {
     require(low.coord.asInstanceOf[Array[Double]].length == other.low.coord.asInstanceOf[Array[Double]].length)
     var ans = 0.0
     if (queryM != null) {
@@ -178,5 +178,5 @@ case class MultiDimension(low: Point[Any], high: Point[Any]) extends Shape {
 
   override def toString: String = "(" + low.toString + "," + high.toString + ")"
 
-  override def dist(other: Any, queryM: Array[(Int, Int)]): Double = -1
+  override def dist(other: Any, queryM: Array[(Double, Int)]): Double = -1
 }

@@ -43,12 +43,8 @@ case class GlobalBPlusTreePartitioner(@transient dataKeyValuePair
 
   def getData(totalCount: Long): Array[(Double, Point[Any])] = {
     val seed = System.currentTimeMillis()
-    if (totalCount <= sampleSize) {
-      dataKeyValuePair.collect()
-    } else {
-      dataKeyValuePair.sample(withReplacement = false,
-        sampleSize.toDouble / totalCount, seed).collect()
-    }
+    val sampleRate = math.min(1.0, sampleSize.toDouble / totalCount.toDouble)
+    dataKeyValuePair.sample(withReplacement = false, sampleRate, seed).collect()
   }
 
   override def numPartitions: Int = BPlusTree.getNumLeaf

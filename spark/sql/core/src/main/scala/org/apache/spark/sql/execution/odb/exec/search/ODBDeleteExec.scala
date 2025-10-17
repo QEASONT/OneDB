@@ -20,7 +20,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.odb.ODBSimilarityFunction
-//import org.apache.spark.sql.catalyst.expressions.odb.common.metric.MetricData
+import org.apache.spark.sql.catalyst.expressions.odb.common.metric.MetricData
 import org.apache.spark.sql.catalyst.expressions.odb.common.shape.{Point, Shape}
 import org.apache.spark.sql.catalyst.expressions.{Attribute, Expression}
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
@@ -29,7 +29,7 @@ import org.apache.spark.sql.execution.odb.exec.MetricExecUtils
 import org.apache.spark.sql.execution.odb.sql.ODBIternalRow
 import org.apache.spark.sql.execution.{SparkPlan, UnaryExecNode}
 
-case class ODBDeleteExec( leftQuery: Point[Any], rightKey: Expression,
+case class ODBDeleteExec( leftQuery: MetricData, rightKey: Expression,
                          rightLogicalPlan: LogicalPlan,
                          right: SparkPlan)
   extends UnaryExecNode with Logging {

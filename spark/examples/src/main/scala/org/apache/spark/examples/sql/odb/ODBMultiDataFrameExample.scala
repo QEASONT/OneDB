@@ -34,30 +34,26 @@ object ODBMultiDataFrameExample extends Logging {
     val spark = SparkSession
       .builder()
       //      .master("spark://node20:7077")
-//      .master("local[*]")
+      //            .master("local[*]")
       .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
       .getOrCreate()
 
-//    val imageDF = spark.read.format("org.apache.spark.ml.source.image.ImageFileFormat").load("examples/src/main/resources/1.png")
+    //    val imageDF = spark.read.format("org.apache.spark.ml.source.image.ImageFileFormat").load("examples/src/main/resources/1.png")
     // For implicit conversions like converting RDDs to DataFrames
     import spark.implicits._
 
     val sc = spark.sparkContext
     // read from file
-    val fileData = if (args.length > 0) args(0) else "examples/src/main/resources/dfood.txt"
-    val queryData = if (args.length > 1) args(1) else "examples/src/main/resources/dfood_q.txt"
-    ODBConfigConstants.GLOBAL_INDEXED_PIVOT_COUNT = if (args.length > 2) args(2).toInt else 9
-    ODBConfigConstants.SAMPLE_SIZE = if (args.length > 3) args(3).toLong else 1L * 10 * 1024 * 1024
-    ODBConfigConstants.MIN_SAMPLE_SIZE = if (args.length > 4) args(4).toLong else 1L * 1024 * 1024
-    ODBConfigConstants.MAX_SAMPLE_SIZE = if (args.length > 5) args(5).toLong else 2048L * 1024 * 1024
-    ODBConfigConstants.RTREE_GLOBAL_MAX_ENTRIES_PER_NODE = if (args.length > 6) args(6).toInt else 5
-    ODBConfigConstants.RTREE_LOCAL_MAX_ENTRIES_PER_NODE = if (args.length > 7) args(7).toInt else 5
-    ODBConfigConstants.RTREE_GLOBAL_NUM_PARTITIONS = if (args.length > 8) args(8).toInt else 20
-    ODBConfigConstants.RTREE_LOCAL_NUM_PARTITIONS = if (args.length > 9) args(9).toInt else 20
+    val fileData = if (args.length > 0) args(0) else "examples/src/main/resources/dair.txt"
+    val queryData = if (args.length > 1) args(1) else "examples/src/main/resources/dair_q.txt"
 
+    val searchTime = sc.getConf.getInt("spark.sql.odb.searchTime", 5)
 
-//    val fileData = "examples/src/main/resources/dfood.txt"
-    val fileContents = sc.textFile(fileData)
+    val INSERT_OR_NOT = if (args.length > 4) args(5).toInt else 0
+    val INSERT_NUM = if (args.length > 5) args(5).toInt else 100
+    //    val fileData = "examples/src/main/resources/dfood.txt"
+    val numPartitionOfInputData = sc.getConf.getInt("spark.sql.odb.shuffle.partitions", 500)
+    val fileContents = sc.textFile(fileData, numPartitionOfInputData)
 
     val headerInfo = fileContents.take(3)
     // read num of rows and columns
@@ -67,16 +63,19 @@ object ODBMultiDataFrameExample extends Logging {
     // read metricm and metricMaxDis
     val metricM = headerInfo(1).split(" ").map(x => x.toInt)
     val metricMaxDis = headerInfo(2).split(" |\t").map(x => x.toDouble)
-    val metricData = fileContents.zipWithIndex().filter(_._2 >= 3).map(MetricRecord.getMetric(_, metricM, metricMaxDis))
+    val metricData = fileContents.mapPartitionsWithIndex { (idx, iter) =>
+        if (idx == 0) iter.drop(3) else iter
+      }.zipWithUniqueId()
+      .map(MetricRecord.getMetric(_, metricM, metricMaxDis))
     //    val metricMeanDis = MetricRecord.calculateMetricMeanDis(metricData, metricM, metricMaxDis)
 
-//    val queryData = "examples/src/main/resources/dfood_q.txt"
+    //    val queryData = "examples/src/main/resources/dfood_q.txt"
     val queryContents = sc.textFile(queryData)
     val queryHeaderInfo = queryContents.take(4)
     val queryM = queryHeaderInfo(0).split(" ").map(x => x.toInt)
     val queryKVal = queryHeaderInfo(1).split(" |\t").zipWithIndex.filter(_._2 > 0).map(x => x._1.toInt)
     val queryRad = queryHeaderInfo(3).split(" |\t").map(x => x.toDouble)
-    val queryPos = queryContents.zipWithIndex().filter(_._2 >= 4).map(x => x._1.toInt).collect()
+    //    val queryPos = queryContents.zipWithIndex().filter(_._2 >= 4).map(x => x._1.toInt).collect()
 
 
     val f = (t1: Any, t2: Any) => {
@@ -101,59 +100,48 @@ object ODBMultiDataFrameExample extends Logging {
         case _ => 0
       }
     }
-    //    val ff = spark.udf.register("udfDist", f)
-    //    val aaa = ff(functions.lit(Array(1.0, 2.0)), functions.lit(Array(1.0, 2.0)))
 
     val df1 = metricData.toDF()
     df1.createOrReplaceTempView("metric1")
-    //    df1.createODBIndex(df1("metricDouble"), df1("metricString"), df1("metricM"), df1("metricMaxDis"), "metric_index1")
+    df1.createODBIndex(df1("metricDouble"), df1("metricString"), df1("metricM"), df1("metricMaxDis"), "metric_index1")
 
-    for (m <- queryPos.indices) {
+
+    for (m <- 1 to searchTime) {
       for (i <- queryRad.indices) {
+        val queryP = metricData.takeSample(false, 1).head
+        logWarning(s"Range Search for Query Point ID: ${queryP.id} with Radius: ${queryRad(i)}")
         val radius = queryRad(i)
-        val filterQueryP = metricData.filter(t => t.id == queryPos(m))
-        if (filterQueryP.count() != 0) {
-          val queryP = filterQueryP.take(1).head
-          val pintsArray: Array[Point[Any]] = metricM.zipWithIndex.map(x =>
-            x._1 match {
-              case 0 | 1 | 2 | 3 | 4 | 5 =>
-                Point[Any](queryP.metricDouble(x._2), x._2, x._1, metricMaxDis(x._2), queryP.id)
-              case 6 =>
-                Point[Any](queryP.metricString(x._2), x._2, x._1, metricMaxDis(x._2), queryP.id)
-            })
-          val searchMetric = MetricData(pintsArray)
-          df1.odbSimilarityWithRangeSearch(searchMetric, radius, queryM, df1("metricDouble")).show()
-        }
+        val pintsArray: Array[Point[Any]] = metricM.zipWithIndex.map(x =>
+          x._1 match {
+            case 0 | 1 | 2 | 3 | 4 | 5 =>
+              Point[Any](queryP.metricDouble(x._2), x._2, x._1, metricMaxDis(x._2), queryP.id)
+            case 6 =>
+              Point[Any](queryP.metricString(x._2), x._2, x._1, metricMaxDis(x._2), queryP.id)
+          })
+        val searchMetric = MetricData(pintsArray)
+        df1.odbSimilarityWithRangeSearch(searchMetric, radius, queryM, df1("metricDouble")).show()
+
       }
       for (i <- queryKVal.indices) {
+
+        val queryP = metricData.takeSample(false, 1).head
+        logWarning(s"kNN Search for Query Point ID: ${queryP.id} with k: ${queryKVal(i)}")
         val k = queryKVal(i)
-        val filterQueryP = metricData.filter(t => t.id == queryPos(m))
-        if (filterQueryP.count() != 0) {
-          val queryP = filterQueryP.take(1).head
-          val pintsArray: Array[Point[Any]] = metricM.zipWithIndex.map(x =>
-            x._1 match {
-              case 0 | 1 | 2 | 3 | 4 | 5 =>
-                Point[Any](queryP.metricDouble(x._2), x._2, x._1, metricMaxDis(x._2), queryP.id)
-              case 6 =>
-                Point[Any](queryP.metricString(x._2), x._2, x._1, metricMaxDis(x._2), queryP.id)
-            })
-          val searchMetric = MetricData(pintsArray)
-          //          df1.odbSimilarityWithKNNSearch(searchMetric, k, queryM, df1("metricDouble")).show()
-          df1.odbSimilarityWithKNNSearch(searchMetric, k, queryM, df1("metricDouble"))
-            .map(
-              attr => {
-                val id = attr.getAs[Long](0)
-                val metricDouble = attr.getAs[mutable.WrappedArray[mutable.WrappedArray[Double]]](1).map(
-                  x => if (x == null) null else x.toArray).toArray
-                val metricString = attr.getAs[mutable.WrappedArray[String]](2).map(
-                  x => if (x == null) null else x).toArray
-                val metricRecord = MetricRecord(id, metricDouble, metricString, metricM, metricMaxDis)
-                (id, metricRecord.toString)
-              }
-            ).toDF("ID", "MetricRecord").show(20, false)
-        }
+
+        val pintsArray: Array[Point[Any]] = metricM.zipWithIndex.map(x =>
+          x._1 match {
+            case 0 | 1 | 2 | 3 | 4 | 5 =>
+              Point[Any](queryP.metricDouble(x._2), x._2, x._1, metricMaxDis(x._2), queryP.id)
+            case 6 =>
+              Point[Any](queryP.metricString(x._2), x._2, x._1, metricMaxDis(x._2), queryP.id)
+          })
+        val searchMetric = MetricData(pintsArray)
+        df1.odbSimilarityWithKNNSearch(searchMetric, k, queryM, df1("metricDouble")).show()
+
       }
+
     }
+
 
     spark.stop()
   }

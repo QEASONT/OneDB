@@ -29,10 +29,10 @@ import org.apache.spark.sql.execution.odb.rdd.ODBRDD
 
 import scala.tools.nsc.interpreter.Completion.Candidates
 
-object MetricRangeAlgorithms {
+object MetricRangeAlgorithms extends Logging{
   // search from M-tree
   def localSearch(query: MetricData, packedPartition: PackedPartition,
-                  thresholdArray: Array[Double], nonZeroMetric: Array[(Int, Int)]):
+                  thresholdArray: Array[Double], nonZeroMetric: Array[(Double, Int)]):
   Iterator[Long] = {
 
     val localIndex = packedPartition.indexes.filter(_.isInstanceOf[LocalODBIndex]).head
@@ -41,7 +41,7 @@ object MetricRangeAlgorithms {
     answers
   }
 
-  def localValid(metricData: MetricData, candidates: RDD[MetricData], threshold: Double, nonZeroMetric: Array[(Int, Int)]):
+  def localValid(metricData: MetricData, candidates: RDD[MetricData], threshold: Double, nonZeroMetric: Array[(Double, Int)]):
   RDD[(MetricData, Double)] = {
     val sum = nonZeroMetric.map(_._1).sum
     val weight = nonZeroMetric.map(x => (x._1 / sum, x._2))
@@ -69,40 +69,50 @@ object MetricRangeAlgorithms {
     def search(sparkContext: SparkContext, query: MetricData, odbRDD: ODBRDD,
                threshold: Double, queryM: Array[Int]): RDD[(MetricData, Double)] = {
       val bQuery = sparkContext.broadcast(query)
-      val averageThreshold = threshold / queryM.sum
-      val thresholdArray = queryM.map(x => x * averageThreshold)
+
+
       val globalODBIndex = odbRDD.globalODBIndex.asInstanceOf[GlobalODBIndex]
 
       var start = System.currentTimeMillis()
       var end = start
       val nonZeroMetric = queryM.zipWithIndex.filter(x => x._1 != 0)
-      val candidatePartitions = globalODBIndex.getPartitionsWithThreshold(query, threshold, nonZeroMetric)
+      val sum = nonZeroMetric.map(_._1).sum
+      val weight = nonZeroMetric.map(x => (x._1 / sum.toDouble, x._2))
+
+      val byIdx: Map[Int, Double] = weight.map { case (w, idx) => idx -> w }.toMap
+      val thresholdArray: Array[Double] = queryM.indices.map(i => threshold * byIdx.getOrElse(i, 0.0d)).toArray
+
+
+      val candidatePartitions = globalODBIndex.getPartitionsWithThreshold(query, threshold, weight)
       logWarning(s"ODB Get candidatePartitions: ${
         end - start
       } ms")
 
-      val candidateID = PartitionPruningRDD.create(odbRDD.packedRDD, candidatePartitions.contains).flatMap(packedPartition =>
-        localSearch(bQuery.value, packedPartition, thresholdArray, nonZeroMetric)
-      ).distinct()
-//            val cc = candidateID.collect()
-      //      val candidateMetric = odbRDD.metricDataRDD.filter(x => candidateID.collect().contains(x.id))
-      val rdd1 = odbRDD.metricDataRDD.map(x => (x.id, x))
-      val rdd2 = candidateID.map(x => (x, null))
-      val candidateMetric = rdd1.join(rdd2).map(_._2._1)
 
-      end = System.currentTimeMillis()
-      logWarning(s"ODB Get candidateArray: ${
-        end - start
-      } ms")
+
+      //      val candidateID = PartitionPruningRDD.create(odbRDD.packedRDD, candidatePartitions.contains).flatMap(packedPartition =>
+      //        localSearch(bQuery.value, packedPartition, thresholdArray, weight)
+      //      )
+      val candidateID = PartitionPruningRDD.create(odbRDD.packedRDD, candidatePartitions.contains)
+        .mapPartitions { iter =>
+          iter.flatMap(packedPartition => {
+
+            localSearch(bQuery.value, packedPartition, thresholdArray, weight)
+          })
+        }
+
+      val bCandidateID = sparkContext.broadcast(candidateID.collect().toSet)
+      val candidateMetric = odbRDD.metricDataRDD.filter(x => bCandidateID.value.contains(x.id))
+      candidateMetric.foreach(_ => ())
 
       start = System.currentTimeMillis()
-      //      val dd = localValid(bQuery.value, odbRDD.metricDataRDD, threshold, nonZeroMetric).collect()
-      val answers = localValid(bQuery.value, candidateMetric, threshold, nonZeroMetric)
+      val answers = localValid(bQuery.value, candidateMetric, threshold, weight)
+      answers.foreach(_ => ())
       end = System.currentTimeMillis()
-      logWarning(s"ODB Get Result of LocalSearch: ${
+      logWarning(s"ODB Get Result of RNN Search: ${
         end - start
       } ms")
-      //      val cc = answers.collect()
+
       answers
 
     }

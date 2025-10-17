@@ -37,7 +37,7 @@ case class Point[+T](coord: T, metricIndex: Int, metricValue: Int, metricMaxDis:
   def makeCopy: Point[Any] =
     new Point[Any](coord, metricIndex, metricValue, metricMaxDis, id)
 
-  override def minDist(other: Any, queryM: Array[(Int, Int)] = null): Double = {
+  override def minDist(other: Any, queryM: Array[(Double, Int)] = null): Double = {
     var normalize: Double = metricMaxDis
     if (metricMaxDis == 0) {
       normalize = other match {
@@ -130,11 +130,25 @@ case class Point[+T](coord: T, metricIndex: Int, metricValue: Int, metricMaxDis:
     }
   }
 
-  override def dist(other: Any, queryM: Array[(Int, Int)]): Double = {
+  override def dist(other: Any, queryM: Array[(Double, Int)]): Double = {
     other match {
-//      case p: Point[Any] => distPoint(p, queryM)
-      case mbr: Rectangle => mbr.dist(this, queryM)
+      //      case p: Point[Any] => distPoint(p, queryM)
+      case mbr: Rectangle =>
+        metricValue match {
+          case 0 | 1 | 4 | 5 =>
+            // L1
+            mbr.distPoint(this, queryM)
+          case 2 =>
+            // Euclid
+            mbr.minDistPoint(this, queryM)
+        }
       case r: SimpleRange => r.minDist(this)
+      case p: Point[Any] => p.minDist(this, queryM)
+      case _ =>
+        // raise error
+        val aa = -999
+        aa
+
     }
   }
 

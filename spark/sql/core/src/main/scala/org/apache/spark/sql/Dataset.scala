@@ -36,6 +36,15 @@ import org.apache.spark.sql.catalyst.catalog.CatalogRelation
 import org.apache.spark.sql.catalyst.encoders._
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.aggregate._
+import org.apache.spark.sql.catalyst.expressions.dita.common.shape.{Point, Rectangle, Shape}
+import org.apache.spark.sql.catalyst.expressions.dita.common.trajectory.Trajectory
+import org.apache.spark.sql.catalyst.expressions.dita._
+import org.apache.spark.sql.catalyst.expressions.mchord.common.shape.{Point => MetricPoint}
+import org.apache.spark.sql.catalyst.expressions.mchord._
+import org.apache.spark.sql.catalyst.expressions.amds.common.shape.{Point => AMDSPoint}
+import org.apache.spark.sql.catalyst.expressions.amds._
+import org.apache.spark.sql.catalyst.expressions.mbt.common.shape.{Point => MBTPoint}
+import org.apache.spark.sql.catalyst.expressions.mbt._
 import org.apache.spark.sql.catalyst.expressions.odb.common.shape.{Point => ODBPoint}
 import org.apache.spark.sql.catalyst.expressions.odb._
 import org.apache.spark.sql.catalyst.expressions.odb.common.metric.MetricData
@@ -49,6 +58,10 @@ import org.apache.spark.sql.catalyst.util.{DateTimeUtils, usePrettyExpression}
 import org.apache.spark.sql.execution._
 import org.apache.spark.sql.execution.command._
 import org.apache.spark.sql.execution.datasources.LogicalRelation
+import org.apache.spark.sql.execution.dita.sql.{CreateTrieIndexCommand, DropTrieIndexCommand}
+import org.apache.spark.sql.execution.mchord.sql.{CreateMchordIndexCommand, DropMchordIndexCommand}
+import org.apache.spark.sql.execution.amds.sql.{CreateAMDSIndexCommand, DropAMDSIndexCommand}
+import org.apache.spark.sql.execution.mbt.sql.{CreateMBTIndexCommand, DropMBTIndexCommand}
 import org.apache.spark.sql.execution.odb.sql.{CreateODBIndexCommand, DropODBIndexCommand}
 import org.apache.spark.sql.execution.python.EvaluatePython
 import org.apache.spark.sql.streaming.DataStreamWriter
@@ -880,7 +893,113 @@ class Dataset[T] private[sql](
     Join(logicalPlan, right.logicalPlan, joinType = Cross, None)
   }
 
- 
+  /*
+   * Create trie index
+   */
+  def createTrieIndex(key: Column, indexName: String): Unit = {
+    CreateTrieIndexCommand.createTrieIndex(sparkSession, logicalPlan, key.toString, indexName, None)
+  }
+
+  /*
+   * Drop trie index
+   */
+  def dropTrieIndex(key: Column): Unit = {
+    DropTrieIndexCommand.dropTrieIndex(sparkSession, logicalPlan, key.toString)
+  }
+
+  /*
+   * Trajectory similarity with threshold search
+   */
+  def trajectorySimilarityWithThresholdSearch(query: Trajectory, key: Column,
+                                              function: TrajectorySimilarityFunction,
+                                              threshold: Double): DataFrame = withPlan {
+    val trajectorySimilarityExpression = TrajectorySimilarityExpression(function, Literal(query,
+      DataTypes.NullType), key.expr)
+    val condition = TrajectorySimilarityWithThresholdExpression(trajectorySimilarityExpression,
+      threshold)
+    Filter(condition, logicalPlan)
+  }
+
+  /*
+   * Trajectory similarity with threshold join
+   */
+  def trajectorySimilarityWithThresholdJoin(right: Dataset[_], leftKey: Column, rightKey: Column,
+                                            function: TrajectorySimilarityFunction,
+                                            threshold: Double): DataFrame = withPlan {
+    val trajectorySimilarityExpression = TrajectorySimilarityExpression(function, leftKey.expr,
+      rightKey.expr)
+    val condition = TrajectorySimilarityWithThresholdExpression(trajectorySimilarityExpression,
+      threshold)
+    Join(logicalPlan, right.logicalPlan, joinType = Inner, Some(condition))
+  }
+
+  /*
+   * Trajectory similarity with knn search
+   */
+  def trajectorySimilarityWithKNNSearch(query: Trajectory, key: Column,
+                                        function: TrajectorySimilarityFunction,
+                                        count: Int): DataFrame = withPlan {
+    val trajectorySimilarityExpression = TrajectorySimilarityExpression(function, Literal(query,
+      DataTypes.NullType), key.expr)
+    val condition = TrajectorySimilarityWithKNNExpression(trajectorySimilarityExpression, count)
+    Filter(condition, logicalPlan)
+  }
+
+  /*
+  * Trajectory similarity with knn join
+  */
+  def trajectorySimilarityWithKNNJoin(right: Dataset[_], leftKey: Column, rightKey: Column,
+                                      function: TrajectorySimilarityFunction,
+                                      count: Int): DataFrame = withPlan {
+    val trajectorySimilarityExpression = TrajectorySimilarityExpression(function, leftKey.expr,
+      rightKey.expr)
+    val condition = TrajectorySimilarityWithKNNExpression(trajectorySimilarityExpression, count)
+    Join(logicalPlan, right.logicalPlan, joinType = Inner, Some(condition))
+  }
+
+  /*
+   * Trajectory mbr range search
+   */
+  def trajectoryMBRRangeSearch(mbr: Rectangle, key: Column): DataFrame = withPlan {
+    val condition = TrajectoryMBRRangeExpression(key.expr, mbr)
+    Filter(condition, logicalPlan)
+  }
+
+  /*
+   * Trajectory circle range search
+   */
+  def trajectoryCircleRangeSearch(center: Point, radius: Double, key: Column): DataFrame =
+    withPlan {
+      val condition = TrajectoryCircleRangeExpression(key.expr, center, radius)
+      Filter(condition, logicalPlan)
+    }
+
+  /*
+   * Create mchord index
+   */
+  def createMchordIndex(key: Column, indexName: String): Unit = {
+    CreateMchordIndexCommand.createMchordIndex(sparkSession, logicalPlan, key.toString,
+      indexName, None)
+  }
+
+  /*
+   * Create AMDS index
+   */
+  def createAMDSIndex(key: Column, indexName: String): Unit = {
+    CreateAMDSIndexCommand.createAMDSIndex(sparkSession, logicalPlan, key.toString,
+      indexName, None)
+  }
+
+  /*
+   * Create MBT index
+   */
+
+  def createMBTIndex(function: MBTSimilarityFunction, key: Column, indexName: String): Unit = {
+    //    val mbtSimilarityExpression = MBTSimilarityExpression(function, key.expr, key.expr)
+    CreateMBTIndexCommand.createMBTIndex(function, sparkSession, logicalPlan, key.toString,
+      indexName, None)
+  }
+
   /*
    * Create ODB index
    */
@@ -893,6 +1012,27 @@ class Dataset[T] private[sql](
   }
 
   /*
+   * Drop mchord index
+   */
+  def dropMchordIndex(key: Column): Unit = {
+    DropMchordIndexCommand.dropMchordIndex(sparkSession, logicalPlan, key.toString)
+  }
+
+  /*
+   * Drop AMDS index
+   */
+  def dropAMDSIndex(key: Column): Unit = {
+    DropAMDSIndexCommand.dropAMDSIndex(sparkSession, logicalPlan, key.toString)
+  }
+
+  /*
+   * Drop MBT index
+   */
+  def dropMBTIndex(key: Column): Unit = {
+    DropMBTIndexCommand.dropMBTIndex(sparkSession, logicalPlan, key.toString)
+  }
+
+  /*
    * Drop ODB index
    */
   def dropODBIndex(key: Column): Unit = {
@@ -901,12 +1041,77 @@ class Dataset[T] private[sql](
 
 
   /*
+   * Metric similarity with knn search
+   */
+  def metricSimilarityWithKNNSearch(query: MetricPoint[Any], key: Column,
+                                    function: MetricSimilarityFunction,
+                                    count: Int): DataFrame = withPlan {
+    val metricSimilarityExpression = MetricSimilarityExpression(function, Literal(query,
+      DataTypes.NullType), key.expr)
+    val condition = MetricSimilarityWithKNNExpression(metricSimilarityExpression, count)
+    Filter(condition, logicalPlan)
+  }
+
+  /*
+   * AMDS similarity with knn search
+   */
+  def amdsSimilarityWithKNNSearch(query: AMDSPoint[Any], key: Column,
+                                  function: AMDSSimilarityFunction,
+                                  count: Int): DataFrame = withPlan {
+    val amdsSimilarityExpression = AMDSSimilarityExpression(function, Literal(query,
+      DataTypes.NullType), key.expr)
+    val condition = AMDSSimilarityWithKNNExpression(amdsSimilarityExpression, count)
+    Filter(condition, logicalPlan)
+  }
+
+  /*
+   * MBT similarity with knn search
+   */
+  def mbtSimilarityWithKNNSearch(query: MBTPoint[Any], key: Column,
+                                 function: MBTSimilarityFunction,
+                                 count: Int): DataFrame = withPlan {
+    val mbtSimilarityExpression = MBTSimilarityExpression(function, Literal(query,
+      DataTypes.NullType), key.expr)
+    val condition = MBTSimilarityWithKNNExpression(mbtSimilarityExpression, count)
+    Filter(condition, logicalPlan)
+  }
+
+  /*
    * ODB similarity with knn search
    */
   def odbSimilarityWithKNNSearch(query: MetricData, count: Int, queryM: Array[Int], key: Column): DataFrame = withPlan {
     //    val odbSimilarityExpression = ODBSimilarityExpression(function, Literal(query,
     //      DataTypes.NullType), key.expr)
     val condition = ODBSimilarityWithKNNExpression(key.expr, query, count, queryM)
+    Filter(condition, logicalPlan)
+  }
+
+  /*
+   * Metric similarity with range query
+   */
+
+  def metricSimilarityWithRangeSearch(center: MetricPoint[Any], radius: Double,
+                                      key: Column): DataFrame = withPlan {
+    val condition = MetricSimilarityRangeExpression(key.expr, center, radius)
+    Filter(condition, logicalPlan)
+  }
+  /*
+   * AMDS similarity with range query
+   */
+
+  def amdsSimilarityWithRangeSearch(center: AMDSPoint[Any], radius: Double,
+                                    key: Column): DataFrame = withPlan {
+    val condition = AMDSSimilarityRangeExpression(key.expr, center, radius)
+    Filter(condition, logicalPlan)
+  }
+
+  /*
+   * MBT similarity with range query
+   */
+
+  def mbtSimilarityWithRangeSearch(center: MBTPoint[Any], radius: Double,
+                                   key: Column, distanceFunction: MBTSimilarityFunction): DataFrame = withPlan {
+    val condition = MBTSimilarityRangeExpression(key.expr, distanceFunction, center, radius)
     Filter(condition, logicalPlan)
   }
 
@@ -921,10 +1126,51 @@ class Dataset[T] private[sql](
   }
 
   /*
+   * AMDS delete query
+   */
+  def amdsDelete(center: AMDSPoint[Any], key: Column): DataFrame = withPlan {
+    val condition = AMDSDeleteExpression(key.expr, center)
+    Filter(condition, logicalPlan)
+  }
+
+  /*
+   * AMDS insert query
+   */
+  def amdsInsert(center: AMDSPoint[Any], key: Column): DataFrame = withPlan {
+    val condition = AMDSInsertExpression(key.expr, center)
+    Filter(condition, logicalPlan)
+  }
+
+  /*
+    * Mchord delete query
+  */
+  def mchordDelete(center: MetricPoint[Any], key: Column): DataFrame = withPlan {
+    val condition = MetricDeleteExpression(key.expr, center)
+    Filter(condition, logicalPlan)
+  }
+
+  /*
+   * Mchord insert query
+   */
+  def mchordInsert(center: MetricPoint[Any], key: Column): DataFrame = withPlan {
+    val condition = MetricInsertExpression(key.expr, center)
+    Filter(condition, logicalPlan)
+  }
+
+  /*
+   * MBT delete query
+   */
+
+  def mbtDelete(center: MBTPoint[Any], key: Column, function: MBTSimilarityFunction): DataFrame = withPlan {
+    val condition = MBTDeleteExpression(key.expr, function, center)
+    Filter(condition, logicalPlan)
+  }
+
+  /*
    * ODB insert query
    */
 
-  def odbInsert(center: ODBPoint[Any], key: Column): DataFrame = withPlan {
+  def odbInsert(center: MetricData, key: Column): DataFrame = withPlan {
     val condition = ODBInsertExpression(key.expr, center)
     Filter(condition, logicalPlan)
   }
@@ -933,11 +1179,19 @@ class Dataset[T] private[sql](
    * ODB delete query
    */
 
-  def odbDelete(center: ODBPoint[Any], key: Column): DataFrame = withPlan {
+  def odbDelete(center: MetricData, key: Column): DataFrame = withPlan {
     val condition = ODBDeleteExpression(key.expr, center)
     Filter(condition, logicalPlan)
   }
 
+  /*
+   * MBT insert query
+   */
+
+  def mbtInsert(center: MBTPoint[Any], key: Column, function: MBTSimilarityFunction): DataFrame = withPlan {
+    val condition = MBTInsertExpression(key.expr, function, center)
+    Filter(condition, logicalPlan)
+  }
 
   /**
    * :: Experimental ::

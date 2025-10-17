@@ -42,28 +42,30 @@ object MetricSimilarityWithKNNAlgorithms {
       }
     }
 
-    def localValid(metricData: MetricData, candidates: RDD[MetricData], threshold: Double, nonZeroMetric: Array[(Int, Int)]):
-    RDD[(MetricData, Double)] = {
+    def localValid(metricData: MetricData, candidates: RDD[MetricData], nonZeroMetric: Array[(Double, Int)], k: Int): RDD[(MetricData, Double)] = {
       val sum = nonZeroMetric.map(_._1).sum
-      val weight = nonZeroMetric.map(x => (x._1 / sum, x._2))
+      val weight = nonZeroMetric.map(x => (x._1 / sum.toDouble, x._2))
 
       val res = candidates.map(candidateMD => {
-        // (value index) index new
         val dist = weight.map(
           queryM => {
-            //          val queryPoint = metricData.points(queryM._1._2)
-            //          val candidatePoint = candidateMD.points(queryM._1._2)
             val distance = metricData.points(queryM._2).minDist(candidateMD.points(queryM._2)) * queryM._1
             distance
           }
         ).sum
         (candidateMD, dist)
       })
-      res.filter(_._2 <= threshold)
+
+
+      // Take the top k from the filtered results and convert to an RDD
+      val topKResults = res.takeOrdered(k)(Ordering.by[(MetricData, Double), Double](_._2))
+
+      // Convert the array back to an RDD
+      res.sparkContext.parallelize(topKResults)
     }
 
     def localSearch(query: MetricData, packedPartition: PackedPartition,
-                    threshold: Array[Double], nonZeroMetric: Array[(Int, Int)]):
+                    threshold: Array[Double], nonZeroMetric: Array[(Double, Int)]):
     Iterator[Long] = {
 
       val localIndex = packedPartition.indexes.filter(_.isInstanceOf[LocalODBIndex]).head
@@ -73,7 +75,7 @@ object MetricSimilarityWithKNNAlgorithms {
     }
 
     def localKnnSearch(query: MetricData, packedPartition: PackedPartition,
-                       count: Int, nonZeroMetric: Array[(Int, Int)]):
+                       count: Int, nonZeroMetric: Array[(Double, Int)]):
     Iterator[Double] = {
 
       val localIndex = packedPartition.indexes.filter(_.isInstanceOf[LocalODBIndex]).head
@@ -93,46 +95,50 @@ object MetricSimilarityWithKNNAlgorithms {
       var end = start
 
       val nonZeroMetric = queryM.zipWithIndex.filter(x => x._1 != 0)
-
-      val samplePartition = globalODBIndex.getKnnSamplePartitions(bQuery.value, nonZeroMetric)
-      val estimatedDis = PartitionPruningRDD.create(odbRDD.packedRDD,
-        samplePartition.contains).flatMap(packedPartition =>
-        localKnnSearch(bQuery.value, packedPartition, count, nonZeroMetric)).take(1).head
+      val sum = nonZeroMetric.map(_._1).sum
+      val weight = nonZeroMetric.map(x => (x._1 / sum.toDouble, x._2))
+      val estimatedRated = sparkContext.getConf.getDouble("spark.odb.estimatedRate", ODBConfigConstants.ODB_KNN_ESTIMATED_RATE_DEFAULT)
+      val estimatedDis = globalODBIndex.getKnnEstimatedThreshold(bQuery.value, count, weight) * estimatedRated
       end = System.currentTimeMillis()
-      logWarning(s"ODB Get estimatedDis: ${
+      logWarning(s"ODB Get Estimated Distance of kNN: ${
         end - start
       } ms")
 
+
       start = System.currentTimeMillis()
-      val averageThreshold = estimatedDis / queryM.sum
-      val thresholdArray = queryM.map(x => x * averageThreshold)
-      val candidatePartitions = globalODBIndex.getPartitionsWithThreshold(bQuery.value, estimatedDis, nonZeroMetric)
+      val byIdx: Map[Int, Double] = weight.map { case (w, idx) => idx -> w }.toMap
+      val thresholdArray: Array[Double] = queryM.indices.map(i => estimatedDis * byIdx.getOrElse(i, 0.0d)).toArray
+
+      val candidatePartitions = globalODBIndex.getPartitionsWithThreshold(bQuery.value, estimatedDis, weight)
+
+      end = System.currentTimeMillis()
       logWarning(s"ODB Get candidatePartitions: ${
         end - start
       } ms")
 
-      val candidateID = PartitionPruningRDD.create(odbRDD.packedRDD, candidatePartitions.contains).flatMap(packedPartition =>
-        localSearch(bQuery.value, packedPartition, thresholdArray, nonZeroMetric)
-      ).distinct()
 
-      //      val candidateMetric = odbRDD.metricDataRDD.filter(x => candidateID.collect().contains(x.id))
-      val rdd1 = odbRDD.metricDataRDD.map(x => (x.id, x))
-      val rdd2 = candidateID.map(x => (x, null))
-      val candidateMetric = rdd1.join(rdd2).map(_._2._1)
 
-      end = System.currentTimeMillis()
-      logWarning(s"ODB Get candidateArray: ${
-        end - start
-      } ms")
+      val candidateID = PartitionPruningRDD.create(odbRDD.packedRDD, candidatePartitions.contains)
+        .mapPartitions { iter =>
+          iter.flatMap(packedPartition => {
+            localSearch(bQuery.value, packedPartition, thresholdArray, weight)
+          })
+        }
+
+      val bCandidateID = sparkContext.broadcast(candidateID.collect().toSet)
+      val candidateMetric = odbRDD.metricDataRDD.filter(x => bCandidateID.value.contains(x.id))
+      candidateMetric.foreach(_ => ())
 
       start = System.currentTimeMillis()
 
-      val answers = localValid(bQuery.value, candidateMetric, estimatedDis, nonZeroMetric)
+      val answers = localValid(bQuery.value, candidateMetric, weight, count)
+      answers.foreach(_ => ())
       end = System.currentTimeMillis()
-      logWarning(s"ODB Get Result of kNN: ${
+      logWarning(s"ODB Get Result of Knn: ${
         end - start
       } ms")
-      sparkContext.parallelize(answers.takeOrdered(count))
+
+      answers
     }
   }
 }

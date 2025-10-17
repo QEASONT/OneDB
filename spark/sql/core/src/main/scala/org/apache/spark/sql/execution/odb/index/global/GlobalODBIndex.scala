@@ -29,16 +29,16 @@ case class GlobalODBIndex(partitioner: GlobalODBPartitioner) extends GlobalIndex
     partitioner.getPartition(key)
   }
 
-  def getKnnSamplePartitions(query: MetricData, nonZeroQueryM: Array[(Int, Int)]): List[Int] = {
+  def getKnnSamplePartitions(query: MetricData, nonZeroQueryM: Array[(Double, Int)]): List[Int] = {
     partitioner.getKnnSamplePartitions(query, nonZeroQueryM)
   }
 
   def getPartitionsWithThreshold(key: MetricData, threshold: Double,
-                                 nonZeroQueryM: Array[(Int, Int)]): List[Int] = {
+                                 nonZeroQueryM: Array[(Double, Int)]): List[Int] = {
     partitioner.getPartitionsWithThreshold(key, threshold, nonZeroQueryM)
   }
 
-  def getKnnEstimatedThreshold(query: MetricData, k: Int, nonZeroQueryM: Array[(Int, Int)]): Double = {
+  def getKnnEstimatedThreshold(query: MetricData, k: Int, nonZeroQueryM: Array[(Double, Int)]): Double = {
     partitioner.getKnnEstimatedThreshold(query, k, nonZeroQueryM)
   }
 

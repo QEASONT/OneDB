@@ -194,7 +194,7 @@ case class ODBSimilarityRangeExpression(similarity: Expression,
   }
 }
 
-case class ODBDeleteExpression(similarity: Expression, center: Point[Any])
+case class ODBDeleteExpression(similarity: Expression, center: MetricData)
   extends UnaryExpression with CodegenFallback {
 
   override def child: Expression = similarity
@@ -208,7 +208,7 @@ case class ODBDeleteExpression(similarity: Expression, center: Point[Any])
   }
 }
 
-case class ODBInsertExpression(similarity: Expression, center: Point[Any])
+case class ODBInsertExpression(similarity: Expression, center: MetricData)
   extends UnaryExpression with CodegenFallback {
 
   override def child: Expression = similarity

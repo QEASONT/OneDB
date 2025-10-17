@@ -21,35 +21,43 @@ import org.apache.spark.rdd.{RDD, ShuffledRDD}
 import org.apache.spark.sql.catalyst.expressions.odb.ODBSimilarityFunction
 import org.apache.spark.sql.catalyst.expressions.odb.common.ODBConfigConstants
 import org.apache.spark.sql.catalyst.expressions.odb.common.metric.MetricData
-
 import org.apache.spark.sql.catalyst.expressions.odb.common.shape.{Point, Rectangle}
 import org.apache.spark.sql.execution.odb.index.global.MTree
 import org.apache.spark.sql.execution.odb.index.global.Entry
 import org.apache.spark.sql.execution.odb.index.local.RStarTree
 import org.apache.spark.sql.execution.odb.partition.global.GlobalODBPartitioner.partition
 import org.apache.spark.sql.execution.odb.partition.local.LocalODBPartitioner
+import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.SizeEstimator
+import org.apache.spark.util.random.SamplingUtils
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
+import scala.util.hashing.MurmurHash3
+
+case class Bounds(min: Array[Double], max: Array[Double])
 
 case class GlobalODBPartitioner(
-                                 //                                 @transient data:
-                                 //                                RDD[_ <: Product2[MetricData, Any]],
                                  data: RDD[MetricData],
-                                 maxEntriesPerNode: Int,
-                                 numClusters: Int = 0,
-                                 sampleRate: Long,
-                                 minSampleSize: Long,
-                                 maxSampleSize: Long
-                               ) extends Partitioner {
-  val metricM = getMetricM()
-  //  val tmp = Integer.parseInt(Array.fill(metricM.length)((numClusters - 1).toString).mkString, numClusters)
+                                 maxEntriesPerNode: Int) extends Partitioner {
 
 
-  val pivots: Array[MetricData] = farthestFirstTraversal(data, numClusters)
-  val sampleData = getData(data.count())
-  val featureVec = sampleData.map(x => Point[Any](x.originDist(pivots.head), -1, 2))
+  private lazy val firstRow: MetricData = data.first()
+
+  private val conf = data.sparkContext.getConf
+
+  private val numClusters = conf.getInt("spark.odb.globalIndexedPivotCount", ODBConfigConstants.GLOBAL_INDEXED_PIVOT_COUNT)
+  private val sampleSize = conf.getLong("spark.odb.sampleSize", ODBConfigConstants.SAMPLE_SIZE)
+  val metricM: Array[Int] = firstRow.points.map(_.metricValue)
+
+  val pivots: Array[MetricData] = data.takeSample(withReplacement = false, num = 1)
+
+
+  val sampleData: Array[MetricData] = sampleFixedSize(data, sampleSize.toInt, 20240926L)
+
+  val featureVec = sampleData.map(
+    x => Point[Any](
+      x.originDist(pivots.head), -1, 2))
   val mbrBounds = calMbrBounds()
   val rrStarTree = buildRStarTree()
 
@@ -69,7 +77,7 @@ case class GlobalODBPartitioner(
   }
 
   def calMbrBounds(): Array[(Rectangle, Int)] = {
-    val (dataBounds, totalCount) = getBoundsAndCount()
+    val dataBounds = getBoundsAndCount()
     val data = featureVec
     val RtreeDimension = featureVec.take(1).head.coord.asInstanceOf[Array[Double]].length
     val mbrs = if (numClusters / 2 > 1) {
@@ -97,28 +105,31 @@ case class GlobalODBPartitioner(
     mbrs.zipWithIndex
   }
 
-  def getBoundsAndCount(): (Bounds, Long) = {
-    featureVec.aggregate[(Bounds, Long)]((null, 0))((bound, data) => {
-      val new_bound = if (bound._1 == null) {
-        Bounds(data.coord.asInstanceOf[Array[Double]], data.coord.asInstanceOf[Array[Double]])
-      } else {
-        Bounds(bound._1.min.zip(data.coord.asInstanceOf[Array[Double]]).map(x => Math.min(x._1, x._2)),
-          bound._1.max.zip(data.coord.asInstanceOf[Array[Double]]).map(x => Math.max(x._1, x._2)))
-      }
-      (new_bound, bound._2 + SizeEstimator.estimate(data))
-    }, (left, right) => {
-      val new_bound = {
-        if (left._1 == null) {
-          right._1
-        } else if (right._1 == null) {
-          left._1
+  def getBoundsAndCount(): (Bounds) = {
+    featureVec.aggregate[Bounds](null)(
+      (bound, data) => {
+        if (bound == null) {
+          Bounds(data.coord.asInstanceOf[Array[Double]], data.coord.asInstanceOf[Array[Double]])
         } else {
-          Bounds(left._1.min.zip(right._1.min).map(x => Math.min(x._1, x._2)),
-            left._1.max.zip(right._1.max).map(x => Math.max(x._1, x._2)))
+          Bounds(
+            bound.min.zip(data.coord.asInstanceOf[Array[Double]]).map(x => Math.min(x._1, x._2)),
+            bound.max.zip(data.coord.asInstanceOf[Array[Double]]).map(x => Math.max(x._1, x._2))
+          )
+        }
+      },
+      (left, right) => {
+        if (left == null) {
+          right
+        } else if (right == null) {
+          left
+        } else {
+          Bounds(
+            left.min.zip(right.min).map(x => Math.min(x._1, x._2)),
+            left.max.zip(right.max).map(x => Math.max(x._1, x._2))
+          )
         }
       }
-      (new_bound, left._2 + right._2)
-    })
+    )
   }
 
   def recursiveGroupPoint(dimensionCount: Array[Int], dataBounds: Bounds,
@@ -193,16 +204,22 @@ case class GlobalODBPartitioner(
     recurse(0, List()).map(_.toArray).toArray
   }
 
-  def getKnnEstimatedThreshold(query: MetricData, k: Int, nonZeroQueryM: Array[(Int, Int)]): Double = {
-    //    val partitionNum = getPartition(query)
-    0.0
+  def getKnnEstimatedThreshold(query: MetricData, k: Int, nonZeroQueryM: Array[(Double, Int)]): Double = {
+    // calculate the estimated threshold for k-NN search
+    val distances: Array[Double] = sampleData.map { data =>
+      query.minDist(data, nonZeroQueryM)
+    }
+
+    val sorted = distances.sorted
+    if (sorted.length < k) sorted.lastOption.getOrElse(1e10) else sorted(k - 1)
+
   }
 
-  def getKnnSamplePartitions(query: MetricData, queryM: Array[(Int, Int)]): List[Int] = {
+  def getKnnSamplePartitions(query: MetricData, queryM: Array[(Double, Int)]): List[Int] = {
     if (rrStarTree == null) {
       List.empty
     } else {
-      val k = Point[Any](query.originDist(pivots.head), -2, 1)
+      val k = Point[Any](query.originDist(pivots.head), -2, 2)
       //      val k = key.asInstanceOf[Point[Any]]
       val partitions = rrStarTree.circleRange(k, 0, queryM)
       val partitionNum = partitions((k.toString.hashCode % partitions.length +
@@ -211,63 +228,55 @@ case class GlobalODBPartitioner(
     }
   }
 
-  def getPartitionsWithThreshold(query: MetricData, threshold: Double, queryM: Array[(Int, Int)]): List[Int] = {
+  def getPartitionsWithThreshold(query: MetricData, threshold: Double, queryM: Array[(Double, Int)]): List[Int] = {
     // QT: RR*Tree range transform?
     if (rrStarTree == null) {
       List.empty
     } else {
-      val k = Point[Any](query.originDist(pivots.head), -2, 1)
+      val k = Point[Any](query.originDist(pivots.head), -2, 2)
       //      val k = key.asInstanceOf[Point[Any]]
-      rrStarTree.circleRange(k, threshold, queryM).map { case (shape, x) =>
-        val distance = shape.minDist(k)
-        (distance, x)
-      }.filter(_._1 <= threshold).map(_._2)
+      rrStarTree.circleRange(k, threshold, queryM).map(_._2)
     }
   }
 
-  //  private def calPivotMaxDist(): Map[Int, Map[Int, Double]] = {
-  //    // the first Int is pivotIndex, the second Map's Int is metricIndex, Double is the corresponding max distance value
-  //    val indexDistPair = sampleData.flatMap {
-  //      sample =>
-  //        sample.points.zipWithIndex.map {
-  //          case (point, metricIndex) =>
-  //            pivots.zipWithIndex.map {
-  //              case (pivot, pivotIndex) =>
-  //                (metricIndex, pivotIndex, point.minDist(pivot.points(metricIndex)))
-  //            }.minBy(_._3)
-  //        }
-  //    }
-  //    indexDistPair
-  //      .groupBy(_._2)
-  //      .map { case (pivotIndex, records) =>
-  //        val metricMaxDist = records
-  //          .groupBy(_._1)
-  //          .map { case (metricIndex, groupedRecords) =>
-  //            val maxDistance = groupedRecords.map(_._3).max
-  //            (metricIndex, maxDistance)
-  //          }
-  //        (pivotIndex, metricMaxDist)
-  //      }
-  // }
 
   override def getPartition(key: Any): Int = {
     val k = key.asInstanceOf[MetricData]
     val featurePoint = Point[Any](k.originDist(pivots.head), -1, 2)
     val partitions = rrStarTree.circleRange(featurePoint, 0.0)
-    val partitionNum = partitions((featurePoint.coord.toString.hashCode % partitions.length +
-      partitions.length) % partitions.length)._2
-    partitionNum
+    if (partitions.isEmpty) {
+      0
+    } else {
+
+      val coords = featurePoint.coord.asInstanceOf[Array[Double]]
+      val h = MurmurHash3.arrayHash(coords.map(java.lang.Double.hashCode))
+      val idx = Math.floorMod(h, partitions.length)
+      partitions(idx)._2
+    }
   }
 
-  def getData(totalCount: Long): Array[MetricData] = {
-    val seed = System.currentTimeMillis()
-    if (totalCount <= minSampleSize) {
-      data.collect()
-    } else if (totalCount * sampleRate <= maxSampleSize) {
-      data.sample(withReplacement = false, sampleRate, seed).collect()
+
+  def sampleFixedSize(
+                       rdd: RDD[MetricData],
+                       n: Int,
+                       seed: Long,
+                       withReplacement: Boolean = false
+                     ): Array[MetricData] = {
+    val total = rdd.count()
+    if (total <= n) {
+      rdd.collect()
     } else {
-      data.sample(withReplacement = false,
-        maxSampleSize.toDouble / totalCount, seed).collect()
+      val fraction = SamplingUtils.computeFractionForSampleSize(
+        n, total, withReplacement
+      )
+      val arr = rdd.sample(withReplacement, fraction, seed).take(n)
+      if (arr.length < n) {
+
+        val missing = n - arr.length
+        arr ++ rdd.takeSample(withReplacement = false, missing, seed + 1)
+      } else {
+        arr
+      }
     }
   }
 
@@ -302,10 +311,8 @@ case class GlobalODBPartitioner(
 }
 
 object GlobalODBPartitioner {
-  private val minSampleSize = ODBConfigConstants.MIN_SAMPLE_SIZE
-  private val sampleRate = ODBConfigConstants.SAMPLE_SIZE
-  private val maxSampleSize = ODBConfigConstants.MAX_SAMPLE_SIZE
-  private val numClusters = ODBConfigConstants.GLOBAL_INDEXED_PIVOT_COUNT
+
+
   private val maxEntriesPerNode = ODBConfigConstants.RTREE_GLOBAL_MAX_ENTRIES_PER_NODE
 
   def partition(dataRDD: RDD[MetricData]):
@@ -314,22 +321,16 @@ object GlobalODBPartitioner {
     // TODO:QT collect?
 
 
-    val partitioner = new GlobalODBPartitioner(dataRDD, maxEntriesPerNode, numClusters, sampleRate, minSampleSize, maxSampleSize)
+    val partitioner = new GlobalODBPartitioner(dataRDD, maxEntriesPerNode)
+    println(s"GlobalODBPartitioner numPartitions = ${partitioner.numPartitions}, dataRDD.getNumPartitions = ${dataRDD.getNumPartitions}")
 
-    //    val aaa = dataRDD.collect().map(x => partitioner.getPartition(x)).foreach(println)
-    // QT: shuffled key value pair = [Point[Any], Any,Any]?
-    //    val shuffled = new ShuffledRDD[Int, Point[Any], Any](pairedDataRDD, partitioner)
-    // shuffle
+    //    val numOfPartitions = dataRDD.getNumPartitions
     val pairedDataRDD = dataRDD.map(x => {
       (x, None)
     })
 
     val shuffled = new ShuffledRDD[MetricData, Any, Any](pairedDataRDD, partitioner)
 
-    //    val cc = dataRDD.map(x => partitioner.getPartition(x)).collect()
-    //    val ccMax = cc.max
-    //    val ccMin = cc.min
-    //    val bbb = shuffled.collectPartitions().map(_.length)
 
     (shuffled.map(_._1), partitioner)
   }

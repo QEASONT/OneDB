@@ -51,16 +51,16 @@ case class ODBIndexedRelation(child: Any, key: Attribute)
         val pointsArray = ODBSimilarityExpression.getPoints(row)
         new ODBIternalRow(row.copy(), pointsArray)
       }).asInstanceOf[RDD[MetricData]]
-      val metricMArray = leftRDD.take(1)(0).points.map(x => x.metricValue)
-      new ODBRDD(leftRDD, metricMArray)
+      //      val metricMArray = leftRDD.take(1)(0).points.map(x => x.metricValue)
+      new ODBRDD(leftRDD)
 
     case sparkPlan: SparkPlan =>
-      val metricMArray = sparkPlan.execute().asInstanceOf[RDD[UnsafeRow]].first().getArray(3).toIntArray
+      //      val metricMArray = sparkPlan.execute().asInstanceOf[RDD[UnsafeRow]].first().getArray(3).toIntArray
       val dataRDD = sparkPlan.execute().asInstanceOf[RDD[UnsafeRow]].map(row => {
         val pointsArray = ODBSimilarityExpression.getPoints(row)
         new ODBIternalRow(row.copy(), pointsArray)
       }).asInstanceOf[RDD[MetricData]]
-      new ODBRDD(dataRDD, metricMArray)
+      new ODBRDD(dataRDD)
 
   }
 }

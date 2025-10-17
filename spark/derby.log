@@ -1,0 +1,13 @@
+----------------------------------------------------------------
+Wed Dec 27 15:30:18 CST 2023:
+Booting Derby version The Apache Software Foundation - Apache Derby - 10.12.1.1 - (1704137): instance a816c00e-018c-aa2e-6cb5-00000c5a1a30 
+on database directory /private/var/folders/xf/whpct27x76vfv1g35cktcyg00000gn/T/spark-f38cd904-e6e5-4c34-b177-aa2cf5ae424e/metastore with class loader sun.misc.Launcher$AppClassLoader@18b4aac2 
+Loaded from file:/Users/qiantang/.m2/repository/org/apache/derby/derby/10.12.1.1/derby-10.12.1.1.jar
+java.vendor=Amazon.com Inc.
+java.runtime.version=1.8.0_392-b08
+user.dir=/Users/qiantang/Project/Code/Metric-Spark/spark
+os.name=Mac OS X
+os.arch=aarch64
+os.version=14.2
+derby.system.home=null
+Database Class Loader started - derby.database.classpath=''

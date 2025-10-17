@@ -86,9 +86,9 @@ case class RStarTreeNode(m_mbr: Rectangle, m_child: Array[RStarTreeEntry], isLea
 }
 
 abstract class RStarTreeEntry extends Shape {
-  def minDist(x: Any, queryM: Array[(Int, Int)]): Double
+  def minDist(x: Any, queryM: Array[(Double, Int)]): Double
 
-  def dist(other: Any, queryM: Array[(Int, Int)]): Double
+  def dist(other: Any, queryM: Array[(Double, Int)]): Double
 
   def intersects(x: Shape): Boolean
 
@@ -96,17 +96,17 @@ abstract class RStarTreeEntry extends Shape {
 }
 
 case class RStarTreeLeafEntry(shape: Shape, m_data: Int, size: Int) extends RStarTreeEntry {
-  override def minDist(x: Any, queryM: Array[(Int, Int)]): Double = shape.minDist(x)
+  override def minDist(x: Any, queryM: Array[(Double, Int)]): Double = shape.minDist(x)
 
-  override def dist(other: Any, queryM: Array[(Int, Int)]): Double = shape.dist(other, queryM)
+  override def dist(other: Any, queryM: Array[(Double, Int)]): Double = shape.dist(other, queryM)
 
   override def intersects(x: Shape): Boolean = x.intersects(shape)
 }
 
 case class RStarTreeInternalEntry(mbr: Rectangle, node: RStarTreeNode) extends RStarTreeEntry {
-  override def minDist(x: Any, queryM: Array[(Int, Int)]): Double = mbr.minDist(x)
+  override def minDist(x: Any, queryM: Array[(Double, Int)]): Double = mbr.minDist(x)
 
-  override def dist(other: Any, queryM: Array[(Int, Int)]): Double = shape.dist(other, queryM)
+  override def dist(other: Any, queryM: Array[(Double, Int)]): Double = shape.dist(other, queryM)
 
   override def intersects(x: Shape): Boolean = x.intersects(mbr)
 
@@ -146,7 +146,7 @@ case class RStarTree(root: RStarTreeNode) extends LocalIndex with Serializable {
     ans.toArray
   }
 
-  //  def circleRange(origin: Shape, r: Double, queryM: Array[(Int, Int)] = null): List[(Shape, Int)] = {
+  //  def circleRange(origin: Shape, r: Double, queryM: Array[(Double, Int)] = null): List[(Shape, Int)] = {
   //    val ans = mutable.ListBuffer[(Shape, Int)]()
   //    val st = new mutable.Stack[RStarTreeNode]()
   //    if (root.m_mbr.minDist(origin) <= r && root.m_child.nonEmpty) st.push(root)
@@ -167,10 +167,12 @@ case class RStarTree(root: RStarTreeNode) extends LocalIndex with Serializable {
   //    ans.toList
   //  }
 
-  def circleRange(origin: Shape, r: Double, queryM: Array[(Int, Int)] = null): List[(Shape, Int)] = {
+  def circleRange(origin: Shape, r: Double, queryM: Array[(Double, Int)] = null): List[(Shape, Int)] = {
     val ans = mutable.ListBuffer[(Shape, Int)]()
     val st = new mutable.Stack[RStarTreeNode]()
-    if (root.m_mbr.dist(origin) <= r && root.m_child.nonEmpty) st.push(root)
+    val tmp1 = root.m_mbr.dist(origin)
+    val tmp2 = origin.dist(root.m_mbr, queryM)
+    if (origin.dist(root.m_mbr, queryM) <= r && root.m_child.nonEmpty) st.push(root)
     while (st.nonEmpty) {
       val now = st.pop()
       if (!now.isLeaf) {

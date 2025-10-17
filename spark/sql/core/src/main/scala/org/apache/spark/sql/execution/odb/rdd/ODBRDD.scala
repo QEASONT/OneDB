@@ -30,7 +30,7 @@ import org.slf4j.{Logger, LoggerFactory}
 
 import scala.collection.mutable.ArrayBuffer
 
-class ODBRDD(dataRDD: RDD[MetricData], metricMArray: Array[Int]) extends Serializable {
+class ODBRDD(dataRDD: RDD[MetricData]) extends Serializable {
   val LOG: Logger = LoggerFactory.getLogger(getClass)
   val metricDataRDD = dataRDD
   var packedRDD: RDD[PackedPartition] = _
@@ -38,16 +38,17 @@ class ODBRDD(dataRDD: RDD[MetricData], metricMArray: Array[Int]) extends Seriali
   //  var metricDataRDD: RDD[MetricData] = _
 
   private def buildIndex(): Unit = {
-    //    metricDataRDD = dataRDD
+
     var start = System.currentTimeMillis()
     var end = start
-    //    val pointsRDD = dataRDD.flatMap(x => x.points)
+
 
     val (partitionedRDD, partitioner) = GlobalODBPartitioner.partition(dataRDD)
     end = System.currentTimeMillis()
     LOG.warn(s"ODB Global ODB Partitioning Time: ${end - start} ms")
 
     start = System.currentTimeMillis()
+
     packedRDD = partitionedRDD.mapPartitionsWithIndex {
       case (index, iter) =>
         val data = iter.toArray
@@ -55,7 +56,7 @@ class ODBRDD(dataRDD: RDD[MetricData], metricMArray: Array[Int]) extends Seriali
         indexes.append(LocalODBIndex.buildIndex(data))
         Array(PackedPartition(index, data, indexes.toArray)).iterator
     }
-    packedRDD.persist(StorageLevel.MEMORY_AND_DISK_SER).count()
+    packedRDD.persist(StorageLevel.MEMORY_ONLY).count()
     end = System.currentTimeMillis()
     LOG.warn(s"Building Local Index Time: ${end - start} ms")
     // log statistics

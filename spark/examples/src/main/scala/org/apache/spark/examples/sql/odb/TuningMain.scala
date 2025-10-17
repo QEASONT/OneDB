@@ -5,6 +5,8 @@ import org.apache.spark.sql.catalyst.expressions.odb.common.ODBConfigConstants
 import org.apache.spark.sql.catalyst.expressions.odb.common.metric.MetricData
 import org.apache.spark.sql.catalyst.expressions.odb.common.shape.Point
 import org.apache.spark.sql.execution.odb.util.MetricRecord
+
+import java.util
 //import org.apache.spark.sql.tuning.{PerformanceReply, PerformanceRequest}
 
 object TuningMain {
@@ -13,7 +15,7 @@ object TuningMain {
                rtreeGlobalMaxEntriesPerNode: Int,
                rtreeLocalMaxEntriesPerNode: Int,
                rtreeGlobalNumPartitions: Int,
-               rtreeLocalNumPartitions: Int): (Int, Long, Long) = {
+               rtreeLocalNumPartitions: Int): util.ArrayList[Long] = {
     val spark = SparkSession
       .builder()
       .master("local[*]")
@@ -36,7 +38,7 @@ object TuningMain {
 
     // Perform range search and KNN search
 
-    ODBConfigConstants.SAMPLE_SIZE = sampleSize
+
     ODBConfigConstants.GLOBAL_INDEXED_PIVOT_COUNT = globalIndexedPivotCount
     ODBConfigConstants.RTREE_GLOBAL_MAX_ENTRIES_PER_NODE = rtreeGlobalMaxEntriesPerNode
     ODBConfigConstants.RTREE_LOCAL_MAX_ENTRIES_PER_NODE = rtreeLocalMaxEntriesPerNode
@@ -44,7 +46,7 @@ object TuningMain {
     ODBConfigConstants.RTREE_LOCAL_NUM_PARTITIONS = rtreeLocalNumPartitions
 
 
-    val queryData = "examples/src/main/resources/dfood_q.txt"
+    val queryData = "examples/src/main/resources/dfood_q_copy.txt"
     val queryContents = sc.textFile(queryData)
     val queryHeaderInfo = queryContents.take(4)
     val queryM = queryHeaderInfo(0).split(" ").map(x => x.toInt)
@@ -113,9 +115,11 @@ object TuningMain {
     val rangeQueryAvg = rangeQueryTimeArray.sum / rangeQueryTimeArray.length
     val knnQueryAvg = knnQueryTimeArray.sum / knnQueryTimeArray.length
 
-    (0,
-      rangeQueryAvg,
-      knnQueryAvg)
 
+    val res = new util.ArrayList[Long]()
+    res.add(0)
+    res.add(rangeQueryAvg)
+    res.add(knnQueryAvg)
+    res
   }
 }

@@ -41,6 +41,69 @@ case class Rectangle(low: Point[Any], high: Point[Any]) extends Shape {
     }
   }
 
+  def shrinkIfNecessary(shape: Shape): Rectangle = {
+    shape match {
+      case point: Point[_] =>
+        val newLow = low.coord.asInstanceOf[Array[Double]].zip(point.coord.asInstanceOf[Array[Double]]).map {
+          case (currentLow, pointCoord) =>
+            if (pointCoord == currentLow) Double.PositiveInfinity else currentLow
+        }
+        val newHigh = high.coord.asInstanceOf[Array[Double]].zip(point.coord.asInstanceOf[Array[Double]]).map {
+          case (currentHigh, pointCoord) =>
+            if (pointCoord == currentHigh) Double.NegativeInfinity else currentHigh
+        }
+
+        // Validate the new bounds to ensure they form a valid rectangle
+        val isValid = newLow.zip(newHigh).forall { case (l, h) => l <= h }
+
+        if (isValid) {
+          Rectangle(
+            Point(newLow.map {
+              case Double.PositiveInfinity => low.coord.asInstanceOf[Array[Double]].min
+              case coord => coord
+            }, low.metricIndex, low.metricValue),
+            Point(newHigh.map {
+              case Double.NegativeInfinity => high.coord.asInstanceOf[Array[Double]].max
+              case coord => coord
+            }, high.metricIndex, high.metricValue)
+          )
+        } else {
+          this // If shrinking makes the rectangle invalid, return the original rectangle
+        }
+
+      case rect: Rectangle =>
+        // Handle shrinking based on a rectangle
+        val newLow = low.coord.asInstanceOf[Array[Double]].zip(rect.low.coord.asInstanceOf[Array[Double]]).map {
+          case (currentLow, rectLow) =>
+            if (currentLow == rectLow) Double.PositiveInfinity else currentLow
+        }
+        val newHigh = high.coord.asInstanceOf[Array[Double]].zip(rect.high.coord.asInstanceOf[Array[Double]]).map {
+          case (currentHigh, rectHigh) =>
+            if (currentHigh == rectHigh) Double.NegativeInfinity else currentHigh
+        }
+
+        // Validate the new bounds to ensure they form a valid rectangle
+        val isValid = newLow.zip(newHigh).forall { case (l, h) => l <= h }
+
+        if (isValid) {
+          Rectangle(
+            Point(newLow.map {
+              case Double.PositiveInfinity => low.coord.asInstanceOf[Array[Double]].min
+              case coord => coord
+            }, low.metricIndex, low.metricValue),
+            Point(newHigh.map {
+              case Double.NegativeInfinity => high.coord.asInstanceOf[Array[Double]].max
+              case coord => coord
+            }, high.metricIndex, high.metricValue)
+          )
+        } else {
+          this // If shrinking makes the rectangle invalid, return the original rectangle
+        }
+
+      case _ => this // If the shape is not a point or rectangle, return the original rectangle
+    }
+  }
+
   def intersects(other: Shape): Boolean = {
     other match {
       case p: Point[Any] => contains(p)
@@ -78,7 +141,7 @@ case class Rectangle(low: Point[Any], high: Point[Any]) extends Shape {
     true
   }
 
-  override def minDist(other: Any, queryM: Array[(Int, Int)] = null): Double = {
+  override def minDist(other: Any, queryM: Array[(Double, Int)] = null): Double = {
     other match {
       case p: Point[Any] => minDistPoint(p, queryM)
       case mbr: Rectangle => minDistRect(mbr, queryM)
@@ -86,7 +149,7 @@ case class Rectangle(low: Point[Any], high: Point[Any]) extends Shape {
     }
   }
 
-  def minDistPoint(p: Point[Any], queryM: Array[(Int, Int)] = null): Double = {
+  def minDistPoint(p: Point[Any], queryM: Array[(Double, Int)] = null): Double = {
 
     require(low.coord.asInstanceOf[Array[Double]].length == p.coord.asInstanceOf[Array[Double]].length)
     // QT: can we just use the L2 distance? and mValue * (p.coord(i) - low.coord(i)) * (p.coord(i) - low.coord(i))
@@ -115,7 +178,7 @@ case class Rectangle(low: Point[Any], high: Point[Any]) extends Shape {
     Math.sqrt(ans)
   }
 
-  def minDistRect(other: Rectangle, queryM: Array[(Int, Int)] = null): Double = {
+  def minDistRect(other: Rectangle, queryM: Array[(Double, Int)] = null): Double = {
     require(low.coord.asInstanceOf[Array[Double]].length == other.low.coord.asInstanceOf[Array[Double]].length)
     var ans = 0.0
     if (queryM != null) {
@@ -143,7 +206,7 @@ case class Rectangle(low: Point[Any], high: Point[Any]) extends Shape {
     Math.sqrt(ans)
   }
 
-  override def dist(other: Any, queryM: Array[(Int, Int)] = null): Double = {
+  override def dist(other: Any, queryM: Array[(Double, Int)] = null): Double = {
     other match {
       case p: Point[Any] => distPoint(p, queryM)
       case mbr: Rectangle => distRect(mbr, queryM)
@@ -151,7 +214,7 @@ case class Rectangle(low: Point[Any], high: Point[Any]) extends Shape {
     }
   }
 
-  def distPoint(p: Point[Any], queryM: Array[(Int, Int)] = null): Double = {
+  def distPoint(p: Point[Any], queryM: Array[(Double, Int)] = null): Double = {
 
     require(low.coord.asInstanceOf[Array[Double]].length == p.coord.asInstanceOf[Array[Double]].length)
     // QT: can we just use the L2 distance? and mValue * (p.coord(i) - low.coord(i)) * (p.coord(i) - low.coord(i))
@@ -178,7 +241,7 @@ case class Rectangle(low: Point[Any], high: Point[Any]) extends Shape {
     ans
   }
 
-  def distRect(other: Rectangle, queryM: Array[(Int, Int)] = null): Double = {
+  def distRect(other: Rectangle, queryM: Array[(Double, Int)] = null): Double = {
     require(low.coord.asInstanceOf[Array[Double]].length == other.low.coord.asInstanceOf[Array[Double]].length)
     var ans = 0.0
     if (queryM != null) {

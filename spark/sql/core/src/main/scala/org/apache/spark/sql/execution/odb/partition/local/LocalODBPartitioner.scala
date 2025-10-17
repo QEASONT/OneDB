@@ -17,6 +17,7 @@ package org.apache.spark.sql.execution.odb.partition.local
 
 import org.apache.spark.Partitioner
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.catalyst.expressions.dita.common.DITAConfigConstants
 import org.apache.spark.sql.catalyst.expressions.odb.common.ODBConfigConstants
 import org.apache.spark.sql.catalyst.expressions.odb.common.metric.MetricData
 import org.apache.spark.sql.catalyst.expressions.odb.common.shape.{Point, Rectangle}
@@ -24,6 +25,7 @@ import org.apache.spark.sql.execution.odb.index.hnsw.RefHnsw
 import org.apache.spark.sql.execution.odb.index.local.RTree
 import org.apache.spark.util.SizeEstimator
 import com.qt.kahip.KaHIPWrapper
+import org.apache.spark.internal.Logging
 import org.apache.spark.sql.execution.odb.index.MVPTree.MVPTree
 import org.apache.spark.sql.execution.odb.index.entity.{MVPDP, MVPError}
 import org.apache.spark.sql.execution.odb.index.local.InvertedIndex
@@ -37,81 +39,140 @@ import scala.util.Random
 
 case class Bounds(min: Array[Double], max: Array[Double])
 
-case class LocalODBPartitioner(RtreeNumOfPartition: Int,
-                               HNSWNumOfPartition: Int,
-                               RtreeMaxEntriesPerNode: Int,
-                               sampleRate: Long,
-                               minSampleSize: Long,
-                               maxSampleSize: Long,
-                               metricData: Array[MetricData]) extends Partitioner {
+case class LocalODBPartitioner(
+                                RtreeMaxEntriesPerNode: Int,
+                                metricData: Array[MetricData]) extends Logging{
   val metricM = getMetricM()
   //  val BPlusTree = buildBPlusTree()
   //  val fineGrainedPoint = cutMetricDataToPoint()
   val rTreeForest = new Array[RTree](metricM.length)
   val mvpTreeForest = new Array[MVPTree](metricM.length)
   val invertIndexForest = new Array[InvertedIndex](metricM.length)
-  //  val hnswForest = new Array[RefHnsw](metricM.length)
-  //  val sampleHnswForest = new Array[RefHnsw](metricM.length)
-  val sampleDataForest = new Array[Array[Point[Any]]](metricM.length)
-  val kahipArray = new ArrayBuffer[Array[Int]](metricM.length)
+  val mbrBoundsForest = new Array[Array[(Rectangle, Int)]](metricM.length)
+
   val distanceOrd = Ordering.Double
   var dataShuffled: Array[Array[Array[Point[Any]]]] = _
   val numOfPartition: Array[Int] = new Array[Int](metricM.length)
-  //  val PQArray = calPQArray()
+  val modalPoints: Array[Array[(Long, Point[Any])]] = metricM.indices.map { metricIndex =>
+    metricData.map(x => (x.id, x.points(metricIndex)))
+  }.toArray
+
   val bf = 2
   val p = 20
   val k = 25
 
-  override def numPartitions: Int = RtreeNumOfPartition
 
-  override def getPartition(key: Any): Int = {
-    val res = key match {
-      case point: Point[Any] =>
-        val metricIndex = point.metricIndex
-        val metricValue = point.metricValue
+  //  override def numPartitions: Int = RtreeNumOfPartition
+  //
+  //  override def getPartition(key: Any): Int = {
+  //    0
+  //
+  //  }
+
+  def deleteMetricData(metricData: MetricData): List[(MetricData, Double)] = {
+    def findTargetMBR(mbrBounds: Array[(Rectangle, Int)], targetPoint: Point[Any]): Option[(Rectangle, Int)] = {
+      mbrBounds.find { case (mbr, _) => mbr.contains(targetPoint) }
+    }
+
+    def updateMBRAfterDelete(mbrBounds: Array[(Rectangle, Int)], targetPoint: Point[Any]): Array[(Rectangle, Int)] = {
+      mbrBounds.map { case (mbr, count) =>
+        if (mbr.contains(targetPoint)) {
+          val shrunkMBR = mbr.shrinkIfNecessary(targetPoint) // Assume shrinkIfNecessary adjusts MBR after point deletion
+          (shrunkMBR, Math.max(count - 1, 0))
+        } else {
+          (mbr, count)
+        }
+      }.filter(_._2 > 0) // Remove MBRs with count 0
+    }
+
+    val res = metricM.zipWithIndex.map {
+      case (metricValue, metricIndex) =>
         metricValue match {
           case 0 | 1 | 4 | 5 =>
             // Rtree
-            val k = point
-            val partitions = rTreeForest(metricIndex).circleRange(k, 0.0)
-            partitions((k.toString.hashCode % partitions.length +
-              partitions.length) % partitions.length)._2
-          //          case 3 =>
-          //            // HNSW
-          //            // find the nearest point in samplePoints
-          //            val nearest = sampleHnswForest(metricIndex).knn(point, 1).head
-          //            val nearestIndex = sampleDataForest(metricIndex).indexOf(nearest)
-          //            kahipArray(metricIndex)(nearestIndex)
+            // Step 1: Find the target MBR
+            val targetPoint = metricData.points(metricIndex)
+            val targetMBR = findTargetMBR(mbrBoundsForest(metricIndex), targetPoint)
+
+            // Step 2: Update the MBR bounds
+            val updatedMBRs = targetMBR match {
+              case Some(_) =>
+                updateMBRAfterDelete(mbrBoundsForest(metricIndex), targetPoint)
+              case None =>
+                mbrBoundsForest(metricIndex) // No changes if point not found
+            }
+
+            // Step 3: Delete the point from the R-tree
+            val deletedEntry = rTreeForest(metricIndex).delete((targetPoint.id.toInt, targetPoint))
+            (metricData, if (deletedEntry != null) 0.0 else 1.0)
+          case 2 | 3 =>
+            val mvpdp = new MVPDP(0, metricData.points(metricIndex))
+            mvpTreeForest(metricIndex).delete(mvpdp)
+            (metricData, 0.0)
+          case 6 =>
+            val stringPoint = metricData
+            invertIndexForest(metricIndex).delete(stringPoint.id.toInt)
+            (metricData, 0.0)
         }
-      case _ =>
-        val aa = 11111
-        aa
     }
-    res
+    res.toList
   }
 
-  //  private def calPQArray(key: MetricData): Array[Int] = {
-  //
-  //    metricM.zipWithIndex.map {
-  //      metricValue =>
-  //        metricValue._2 match {
-  //          case 0 | 1 | 4 =>
-  //            // Rtree
-  //            val k = key.points(metricValue._1)
-  //            val partitions = rTreeForest(metricValue._1).circleRange(k, 0.0)
-  //            partitions((k.toString.hashCode % partitions.length +
-  //              partitions.length) % partitions.length)._2
-  //          case 2 | 3 =>
-  //            // HNSW
-  //            // find the nearest point in samplePoints
-  //            val point = key.points(metricValue._1)
-  //            val nearest = sampleHnswForest(metricValue._1).knn(point, 1).head
-  //            val nearestIndex = sampleDataForest(metricValue._1).indexOf(nearest)
-  //            kahipArray(metricValue._1)(nearestIndex)
-  //        }
-  //
-  //    }
-  //  }
+  def insertMetricData(metricData: MetricData): List[(MetricData, Double)] = {
+
+    def findTargetMBR(mbrBounds: Array[(Rectangle, Int)], newPoint: Point[Any]): Option[(Rectangle, Int)] = {
+      mbrBounds.find { case (mbr, _) => mbr.contains(newPoint) }
+    }
+
+    def updateMBR(mbrBounds: Array[(Rectangle, Int)], newPoint: Point[Any], metricIndex: Int, metricValue: Int): Array[(Rectangle, Int)] = {
+      mbrBounds.map { case (mbr, count) =>
+        if (mbr.contains(newPoint)) {
+          // Expand the MBR if necessary
+          val expandedMBR = mbr.expandToInclude(newPoint)
+          (expandedMBR, count + 1)
+        } else {
+          (mbr, count)
+        }
+      }
+    }
+
+    val res = metricM.zipWithIndex.map {
+      case (metricValue, metricIndex) =>
+        metricValue match {
+          case 0 | 1 | 4 | 5 =>
+            // Rtree
+            // Step 1: Find the target MBR
+            val newPoint = metricData.points(metricIndex)
+            val targetMBR = findTargetMBR(mbrBoundsForest(metricIndex), newPoint)
+
+            // Step 2: Update the MBR bounds or create a new one
+            val updatedMBRs = targetMBR match {
+              case Some((mbr, count)) =>
+                updateMBR(mbrBoundsForest(metricIndex), newPoint, metricIndex, metricValue)
+              case None =>
+                val newMBR = Rectangle(newPoint, newPoint)
+                mbrBoundsForest(metricIndex) :+ (newMBR, 1)
+            }
+
+            // Step 3: Construct the new entry
+            val newEntry = (newPoint.id, newPoint)
+
+            // Step 4: Update the R-tree
+            rTreeForest(metricIndex).insert(newEntry, RtreeMaxEntriesPerNode)
+            (metricData, 0.0)
+          case 2 | 3 =>
+            val mvpdp = new MVPDP(0, metricData.points(metricIndex))
+            mvpTreeForest(metricIndex).mvpAdd(List(mvpdp).asJava, 1)
+            (metricData, 0.0)
+          case 6 =>
+            val stringPoint = metricData.points(metricIndex)
+            invertIndexForest(metricIndex).insert(stringPoint)
+            (metricData, 0.0)
+        }
+    }
+    res.toList
+  }
+
 
   //  var dataShuffled: Array[Array[Point[Any]]] = _
   private def getMetricM(): Array[Int] = {
@@ -119,70 +180,25 @@ case class LocalODBPartitioner(RtreeNumOfPartition: Int,
     metricData.take(1).head.points.map(x => x.metricValue)
   }
 
-  def getData(totalCount: Long): Array[MetricData] = {
-    if (totalCount <= minSampleSize) {
-      metricData
-    } else if (totalCount * sampleRate <= maxSampleSize) {
-      // sample
-      Random.shuffle(metricData.toList).take((totalCount * sampleRate).toInt).toArray
-    } else {
-      Random.shuffle(metricData.toList).take(maxSampleSize.toInt).toArray
-    }
-  }
 
   private def buildAdaptiveTree(): Unit = {
-    metricM.zipWithIndex.foreach {
+    metricM.zipWithIndex.par.foreach {
       case (metricValue, metricIndex) =>
         metricValue match {
           case 0 | 1 | 4 | 5 =>
-            // Rtree
-            //            if (metricIndex == 8) {
-            //              val  a = calMbrBounds(metricIndex, metricValue)
-            //              val bb = 6
-            //            }
-            val mbrBounds = calMbrBounds(metricIndex, metricValue)
-            numOfPartition(metricIndex) = mbrBounds.length
-            if (mbrBounds.nonEmpty) {
-              rTreeForest(metricIndex) = RTree(mbrBounds.map(x => (x._1, x._2, 1)), RtreeMaxEntriesPerNode)
-            } else {
-              null
-            }
+
+            rTreeForest(metricIndex) =
+              RTree(modalPoints(metricIndex), RtreeMaxEntriesPerNode)
+
           case 2 | 3 =>
             mvpTreeForest(metricIndex) = new MVPTree(bf, p, k, 0, 0, 0, 0, null)
-            val mvpdpArray = metricData.zipWithIndex.map {
-              case (data, index) =>
-                new MVPDP(index, data.points(metricIndex))
+            val mvpdpArray = modalPoints(metricIndex).map { x =>
+              new MVPDP(x._1.toInt, x._2)
             }
-            mvpTreeForest(metricIndex).mvpAdd(mvpdpArray.toList.asJava, metricData.length)
+            mvpTreeForest(metricIndex).mvpAdd(new java.util.ArrayList(mvpdpArray.toList.asJava), metricData.length)
           case 6 =>
-            val stringPointArray = metricData.map(x => x.points(metricIndex))
-            invertIndexForest(metricIndex) = new InvertedIndex(stringPointArray)
-
-          //          case 3 =>
-          // sample HNSW
-          //            sampleHnswForest(metricIndex) = new RefHnsw(distanceOrd)
-          //            val sampleData = getData(metricData.length)
-          //            sampleDataForest(metricIndex) = sampleData.map(_.points(metricIndex))
-          //            sampleHnswForest(metricIndex).allocate(sampleData.length)
-          //            sampleData.foreach(x => sampleHnswForest(metricIndex).add(x.points(metricIndex)))
-          //            val (xadj, adjncy) = sampleHnswForest(metricIndex).adjacencyListToCSR()
-          //            val n = xadj.length - 1
-          //            val vwgt = Array[Int]()
-          //            val adjcwgt = Array[Int]()
-          //            val suppress_output = false
-          //            val imbalance = 0.4
-          //            val seed = 123456
-          //            val mode = 0
-          //            val result = KaHIPWrapper.kaffpa(n, vwgt, xadj, adjcwgt, adjncy, HNSWNumOfPartition, imbalance, suppress_output, seed, mode)
-          //            kahipArray(metricIndex) = result.getPart
-          //
-          //
-          //            // HNSW
-          //            val hnsw = new RefHnsw(distanceOrd)
-          //            hnsw.allocate(metricData.length)
-          //            metricData.foreach(x => hnsw.add(x.points(metricIndex)))
-          //            hnswForest(metricIndex) = hnsw
-          // QT: Sample or not
+            val stringPointMap = modalPoints(metricIndex).toMap
+            invertIndexForest(metricIndex) = new InvertedIndex(stringPointMap)
 
 
         }
@@ -190,34 +206,38 @@ case class LocalODBPartitioner(RtreeNumOfPartition: Int,
     }
   }
 
-  def calMbrBounds(metricIndex: Int, metricValue: Int): Array[(Rectangle, Int)] = {
-    val (dataBounds, totalCount) = getBoundsAndCount(metricIndex, metricValue)
-    val data = metricData
-    val RtreeDimension = metricData.take(1).head.points(metricIndex).coord.asInstanceOf[Array[Double]].length
-    val mbrs = if (RtreeNumOfPartition > 1) {
-      val dimensionCount = new Array[Int](RtreeDimension)
-      var remaining = RtreeNumOfPartition.toDouble
-      for (i <- 0 until RtreeDimension) {
-        dimensionCount(i) = Math.ceil(Math.pow(remaining, 1.0 / (RtreeDimension - i))).toInt
-        remaining /= dimensionCount(i)
-      }
+  //  def calMbrBounds(metricIndex: Int, metricValue: Int): Array[(Rectangle, Int)] = {
+  //    val (dataBounds, totalCount) = getBoundsAndCount(metricIndex, metricValue)
+  //    val data = metricData
+  //    val RtreeDimension = metricData.take(1).head.points(metricIndex).coord.asInstanceOf[Array[Double]].length
+  //    val mbrs = if (RtreeNumOfPartition > 1) {
+  //      val dimensionCount = new Array[Int](RtreeDimension)
+  //      var remaining = RtreeNumOfPartition.toDouble
+  //      for (i <- 0 until RtreeDimension) {
+  //        dimensionCount(i) = Math.ceil(Math.pow(remaining, 1.0 / (RtreeDimension - i))).toInt
+  //        remaining /= dimensionCount(i)
+  //      }
+  //
+  //      val currentBounds = Bounds(new Array[Double](RtreeDimension), new Array[Double](RtreeDimension))
+  //      recursiveGroupPoint(dimensionCount, dataBounds, data, metricIndex, metricValue, currentBounds, 0, RtreeDimension - 1)
+  //
+  //    } else {
+  //      if (dataBounds == null) {
+  //        val min = new Array[Double](RtreeDimension).map(_ => Double.MaxValue)
+  //        val max = new Array[Double](RtreeDimension).map(_ => Double.MinValue)
+  //        Array(Rectangle(Point[Any](min, metricIndex, metricValue), Point[Any](max, metricIndex, metricValue)))
+  //      } else {
+  //        Array(Rectangle(Point[Any](dataBounds.min, metricIndex, metricValue),
+  //          Point[Any](dataBounds.max, metricIndex, metricValue)))
+  //      }
+  //    }
+  //
+  //    mbrs.zipWithIndex
+  //  }
 
-      val currentBounds = Bounds(new Array[Double](RtreeDimension), new Array[Double](RtreeDimension))
-      recursiveGroupPoint(dimensionCount, dataBounds, data, metricIndex, metricValue, currentBounds, 0, RtreeDimension - 1)
-
-    } else {
-      if (dataBounds == null) {
-        val min = new Array[Double](RtreeDimension).map(_ => Double.MaxValue)
-        val max = new Array[Double](RtreeDimension).map(_ => Double.MinValue)
-        Array(Rectangle(Point[Any](min, metricIndex, metricValue), Point[Any](max, metricIndex, metricValue)))
-      } else {
-        Array(Rectangle(Point[Any](dataBounds.min, metricIndex, metricValue),
-          Point[Any](dataBounds.max, metricIndex, metricValue)))
-      }
-    }
-
-    mbrs.zipWithIndex
-  }
+  //  def insertMetricData(metricData: Array[MetricData]): Unit = {
+  //
+  //  }
 
   def getBoundsAndCount(metricIndex: Int, metricValue: Int): (Bounds, Long) = {
     metricData.aggregate[(Bounds, Long)]((null, 0))((bound, data) => {
@@ -296,53 +316,12 @@ case class LocalODBPartitioner(RtreeNumOfPartition: Int,
     }
   }
 
-  def getResultWithKnn(query: MetricData, k: Int, nonZeroQueryM: Array[(Int, Int)]): Double = {
-
-    val res = nonZeroQueryM.map {
-      case (queryMetric, queryIndex) =>
-        val queryPoint = query.points(queryIndex)
-        val metricValue = queryPoint.metricValue
-        val metricIndex = queryPoint.metricIndex
-        metricValue match {
-          case 0 | 1 | 4 | 5 =>
-            // Rtree
-            val partitions = rTreeForest(metricIndex).circleRange(queryPoint, 0.0)
-            val partitionNum = partitions((queryPoint.toString.hashCode % partitions.length +
-              partitions.length) % partitions.length)._2
-            //            println("queryIndex" + queryIndex)
-            //            println("partitionNum" + partitionNum)
-            //            println("dataShuffled(queryIndex).length" + dataShuffled(queryIndex).length)
-            val candidatePoints = dataShuffled(queryIndex)(partitionNum)
-            val distances = candidatePoints.map(point => point.minDist(queryPoint))
-            if (k > distances.length - 1) {
-              distances.sorted.apply(distances.length - 1) * queryMetric
-            }
-            else {
-              distances.sorted.apply(k) * queryMetric
-            }
-          //  the distance of the k-th nearest neighbor
-
-          case 2 | 3 =>
-            // MVP
-            val error = MVPError.MVP_SUCCESS
-            val mvpdp = new MVPDP(0, queryPoint)
-            mvpTreeForest(metricIndex).mvpKnnSearch(mvpdp, k).last.minDist(queryPoint) * queryMetric
-          case 6 =>
-            // Inverted Index
-            val queryStr = queryPoint.coord.asInstanceOf[String]
-            val knn = invertIndexForest(metricIndex).knnSearch(queryStr, k)
-            knn.last._2 * queryMetric
-          //          case 3 =>
-          //            // HNSW
-          //            val nearest = hnswForest(metricIndex).knn(queryPoint, 1).head
-          //            val nearestIndex = metricData.indexOf(nearest)
-          //            kahipArray(metricIndex)(nearestIndex)
-        }
-    }
-    res.sum
+  def getResultWithKnn(query: MetricData, k: Int, nonZeroQueryM: Array[(Double, Int)]): Double = {
+    0
   }
 
-  def getResultWithThreshold(query: MetricData, threshold: Array[Double], nonZeroQueryM: Array[(Int, Int)]): Array[Long] = {
+  def getResultWithThreshold(query: MetricData, threshold: Array[Double], nonZeroQueryM: Array[(Double, Int)]): Array[Long] = {
+    val start = System.currentTimeMillis()
     val res = nonZeroQueryM.flatMap {
       case (queryMetric, queryIndex) =>
         val queryPoint = query.points(queryIndex)
@@ -351,22 +330,9 @@ case class LocalODBPartitioner(RtreeNumOfPartition: Int,
         metricValue match {
           case 0 | 1 | 4 | 5 =>
             // Rtree
-            val partitions = rTreeForest(metricIndex).circleRange(queryPoint, threshold(queryIndex))
-            if (partitions.length == 0) {
-              val cc = 0
-            }
-            val partitionNum = partitions((queryPoint.toString.hashCode % partitions.length +
-              partitions.length) % partitions.length)._2
-            if (partitionNum > dataShuffled(queryIndex).length) {
-              println("queryIndex:" + queryIndex)
-              println("partitionNum:" + partitionNum)
-              println("dataShuffled(queryIndex).length:" + dataShuffled(queryIndex).length)
-            }
-            val candidatePoints = dataShuffled(queryIndex)(partitionNum)
-            candidatePoints.filter(point => point.minDist(queryPoint) <= threshold(queryIndex)).map(_.id)
-          //            val partitions = getPartition(queryPoint)
-          //            val candidatePoints = dataShuffled(queryIndex)(partitions)
-          //            candidatePoints.filter(point => point.minDist(queryPoint) <= threshold(queryIndex)).map(_.id)
+            val res = rTreeForest(metricIndex).circleRange(queryPoint, threshold(queryIndex))
+            res.map(x => x._1.asInstanceOf[Point[Any]].id)
+
           case 2 | 3 =>
             // MVP
             val error = MVPError.MVP_SUCCESS
@@ -377,99 +343,31 @@ case class LocalODBPartitioner(RtreeNumOfPartition: Int,
             val queryStr = queryPoint.coord.asInstanceOf[String]
             val range = threshold(queryIndex)
             val rangeSearch = invertIndexForest(metricIndex).rangeSearch(queryStr, range)
-            rangeSearch.map(x => x._1._2)
-          //          case 3 =>
-          //            // HNSW
-          //            val nearest = hnswForest(metricIndex).knn(queryPoint, 1).head
-          //            val nearestIndex = metricData.indexOf(nearest)
-          //            kahipArray(metricIndex)(nearestIndex)
+            rangeSearch.map(x => x._1)
+
         }
     }
-
+    val end = System.currentTimeMillis()
+    logWarning(s"Local ODB Search Time: ${end - start} ms")
     res
   }
-
-  def getKnnEstimatedThreshold(query: MetricData, k: Int, nonZeroQueryM: Array[(Int, Int)]): Double = {
-    // knn in every modal
-    nonZeroQueryM.map {
-      case (queryMetric, queryIndex) =>
-        val queryPoint = query.points(queryIndex)
-        val metricValue = queryPoint.metricValue
-        val metricIndex = queryPoint.metricIndex
-        metricValue match {
-          case 0 | 1 | 4 | 5 =>
-            // Rtree
-            val partitions = rTreeForest(metricIndex).circleRange(queryPoint, 0.0).map(x => x._2).distinct
-            val candidatePoints = partitions.flatMap(index => dataShuffled(queryIndex)(index))
-            val distances = candidatePoints.map(point => point.minDist(queryPoint))
-            distances.sorted.apply(k) * queryMetric
-          case 2 | 3 =>
-            // MVP
-            val error = MVPError.MVP_SUCCESS
-            val mvpdp = new MVPDP(0, queryPoint)
-            mvpTreeForest(metricIndex).mvpRetrieve(mvpdp, 0.0, error).map(_.minDist(queryPoint)).sorted.apply(k) * queryMetric
-          case 6 =>
-            // Inverted Index
-            val queryStr = queryPoint.coord.asInstanceOf[String]
-            val knn = invertIndexForest(metricIndex).knnSearch(queryStr, k)
-            knn.last._2 * queryMetric
-          //          case 3 =>
-          //            // HNSW
-          //            val nearest = hnswForest(metricIndex).knn(queryPoint, 1).head
-          //            val nearestIndex = metricData.indexOf(nearest)
-          //            kahipArray(metricIndex)(nearestIndex)
-        }
-    }.sum
-  }
-  //  private def cutMetricDataToPoint(): Array[Array[Point[Any]]] = {
-  //    val demoPoint = metricData.take(1).head.points
-  //    val dim = demoPoint.length
-  //    val fineGrainedPoint = new Array[Array[Point[Any]]](dim)
-  //      .zipWithIndex.map(
-  //        x => {
-  //          val index = x._2
-  //          val points = metricData.map(
-  //            y => {
-  //              y.points(index)
-  //            }
-  //          )
-  //          points
-  //        }
-  //      )
-  //    fineGrainedPoint
-  //  }
 
 
 }
 
 object LocalODBPartitioner {
-  private val minSampleSize = ODBConfigConstants.MIN_SAMPLE_SIZE
-  private val sampleRate = ODBConfigConstants.SAMPLE_SIZE
-  private val maxSampleSize = ODBConfigConstants.MAX_SAMPLE_SIZE
+
+
   private val maxEntriesPerNode = ODBConfigConstants.RTREE_LOCAL_MAX_ENTRIES_PER_NODE
-  private val numOfPartition = ODBConfigConstants.RTREE_LOCAL_NUM_PARTITIONS
-  private val numHNSWPartition = ODBConfigConstants.NUM_HNSW_PARTITIONS
+  //  private val numOfPartition = ODBConfigConstants.RTREE_LOCAL_NUM_PARTITIONS
 
 
   def partition(metricData: Array[MetricData]):
   (Array[Array[MetricData]], LocalODBPartitioner) = {
 
-    val partitioner = new LocalODBPartitioner(numOfPartition, numHNSWPartition, maxEntriesPerNode, sampleRate, minSampleSize, maxSampleSize, metricData)
+    val partitioner = new LocalODBPartitioner(maxEntriesPerNode, metricData)
     partitioner.buildAdaptiveTree()
-    //    val shuffled = metricData.groupBy(p => partitioner.getPartition(p))
-    val dataShuffled = partitioner.metricM.zipWithIndex.map {
-      case (metricValue, metricIndex) =>
-        metricValue match {
-          case 0 | 1 | 4 | 5 =>
-            //            val aaa = metricData.map(x => x.points(metricIndex)).map(o => partitioner.getPartition(o))
-            val shuffled = metricData.map(x => x.points(metricIndex)).groupBy(p => partitioner.getPartition(p))
-            (0 until partitioner.numOfPartition(metricIndex)).map(i =>
-              shuffled.getOrElse(i, Array.empty)).toArray
-          case _ =>
-            (0 until partitioner.numOfPartition(metricIndex)).map(i => Array.empty[Point[Any]]).toArray
-        }
-    }
-    partitioner.dataShuffled = dataShuffled
+
     (null, partitioner)
   }
 

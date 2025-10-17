@@ -48,6 +48,119 @@ public class MVPTree {
 //        this.distance = distance;
     }
 
+    public boolean delete(MVPDP target) {
+        if (node == null) {
+            return false; // Tree is empty
+        }
+
+        return deleteNode(node, target, 0);
+    }
+
+    private boolean deleteNode(Node currentNode, MVPDP target, int level) {
+        if (currentNode == null) {
+            return false;
+        }
+
+        if (currentNode.getType() == NodeType.LEAF) {
+            LeafNode leaf = (LeafNode) currentNode;
+
+            // Check if target matches any points in the leaf
+            for (int i = 0; i < leaf.getNbPoints(); i++) {
+                if (leaf.getPoints().get(i).equals(target)) {
+                    // Remove the target point
+                    leaf.getPoints().remove(i);
+                    leaf.getD1().remove(i);
+                    leaf.getD2().remove(i);
+                    leaf.setNbPoints(leaf.getNbPoints() - 1);
+
+                    // Check if rebalancing is needed
+//                    if (leaf.getNbPoints() < leafCapacity / 2) {
+//                        rebalanceLeaf(leaf);
+//                    }
+                    return true;
+                }
+            }
+        } else if (currentNode.getType() == NodeType.INTERNAL) {
+            InternalNode internal = (InternalNode) currentNode;
+
+            // Recursively check child nodes for deletion
+            for (int i = 0; i < internal.getChildNodes().size(); i++) {
+                Node child = (Node) internal.getChildNodes().get(i);
+                if (child != null) {
+                    double d1 = target.getData().minDist(internal.getSv1().getData(), null);
+                    double d2 = internal.getSv2() != null
+                            ? target.getData().minDist(internal.getSv2().getData(), null)
+                            : 0;
+
+                    // Determine if target might exist in this bin
+                    if (isWithinBin(internal, d1, d2, i)) {
+                        boolean deleted = deleteNode(child, target, level + 1);
+                        if (deleted) {
+                            // Check if the child node needs rebalancing
+                            if (isEmpty(child)) {
+                                internal.getChildNodes().set(i, null);
+                            }
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean isWithinBin(InternalNode internal, double d1, double d2, int binIndex) {
+        int bf = branchFactor; // Branch factor
+        int lengthM1 = bf - 1; // Number of bins for M1
+        int lengthM2 = lengthM1; // Number of bins for M2
+
+        // Check bounds for M1
+        if (binIndex < lengthM1) {
+            double lowerBoundM1 = binIndex == 0 ? 0 : internal.getM1().get(binIndex - 1);
+            double upperBoundM1 = internal.getM1().get(binIndex);
+            if (d1 < lowerBoundM1 || d1 >= upperBoundM1) {
+                return false;
+            }
+        } else {
+            double lowerBoundM1 = internal.getM1().get(lengthM1 - 1);
+            if (d1 < lowerBoundM1) {
+                return false;
+            }
+        }
+
+        // Check bounds for M2
+        int m2Index = binIndex % lengthM2;
+        if (m2Index < lengthM2 - 1) {
+            double lowerBoundM2 = m2Index == 0 ? 0 : internal.getM2().get(m2Index - 1);
+            double upperBoundM2 = internal.getM2().get(m2Index);
+            if (d2 < lowerBoundM2 || d2 >= upperBoundM2) {
+                return false;
+            }
+        } else {
+            double lowerBoundM2 = internal.getM2().get(lengthM2 - 1);
+            if (d2 < lowerBoundM2) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+
+
+    private boolean isEmpty(Node node) {
+        if (node.getType() == NodeType.LEAF) {
+            return ((LeafNode) node).getNbPoints() == 0;
+        }
+        if (node.getType() == NodeType.INTERNAL) {
+            for (Object child : ((InternalNode) node).getChildNodes()) {
+                if (child != null) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
 
     //create leaf node
     private static LeafNode createLeaf(int leafcap) {
@@ -223,6 +336,7 @@ public class MVPTree {
             if (nbpoints <= this.leafCapacity + 2) {
                 newnode = createLeaf(this.leafCapacity);
 
+
                 List<Integer> sv = new ArrayList<>(2);
                 if ((sv = selectVantagePoints(points)) == null) {
                     error = MVPError.MVP_VPNOSELECT;
@@ -257,6 +371,7 @@ public class MVPTree {
                 ((LeafNode) newnode).setNbPoints(((LeafNode) newnode).getPoints().size());
             } else {
                 newnode = createInternal(branchFactor);
+
                 List<Integer> pos = selectVantagePoints(points);
                 if (pos == null) {
                     error = MVPError.MVP_VPNOSELECT;
@@ -533,32 +648,38 @@ public class MVPTree {
         }
         return results1;
     }
-
-    public List<Point<?>> mvpKnnSearch(MVPDP target, int k) {
-        PriorityQueue<MVPDP> nearestNeighbors = new PriorityQueue<>(k, Comparator.comparingDouble(a -> -a.getData().minDist(target.getData(), null)));
-        target.setPath(new ArrayList<>(pathLength)); // Initialize the path with the maximum expected length
-        retrieveKnn(node, target, nearestNeighbors, k, 0);
-        return convertResults(nearestNeighbors);
-    }
-
     private void retrieveKnn(Node node, MVPDP target, PriorityQueue<MVPDP> nearestNeighbors, int k, int level) {
         if (node == null) return;
 
-        double distance = target.getData().minDist(((InternalNode) node).getSv1(), null);
-        if (Double.isNaN(distance) || distance < 0.0) {
-            return; // Optionally, throw an exception or handle the error as needed
-        }
-        updateNearestNeighbors(nearestNeighbors, ((InternalNode) node).getSv1(), distance, k, target);
-
         if (node.getType() == NodeType.INTERNAL) {
             InternalNode inode = (InternalNode) node;
-            for (Object child : inode.getChildNodes()) {
-                if (child != null && (nearestNeighbors.size() < k || target.getData().minDist(((InternalNode) child).getSv1(), null) < nearestNeighbors.peek().getData().minDist(target.getData(), null))) {
-                    retrieveKnn((Node) child, target, nearestNeighbors, k, level + 1);
+            // 先处理sv1
+            double d_sv1 = target.getData().minDist(inode.getSv1().getData(), null);
+            updateNearestNeighbors(nearestNeighbors, inode.getSv1(), d_sv1, k, target);
+
+            // 可选：sv2
+            if (inode.getSv2() != null) {
+                double d_sv2 = target.getData().minDist(inode.getSv2().getData(), null);
+                updateNearestNeighbors(nearestNeighbors, inode.getSv2(), d_sv2, k, target);
+            }
+
+            // 递归所有child
+            for (Object childObj : inode.getChildNodes()) {
+                if (childObj != null) {
+                    Node child = (Node) childObj;
+                    retrieveKnn(child, target, nearestNeighbors, k, level + 1);
                 }
             }
         } else if (node.getType() == NodeType.LEAF) {
             LeafNode lnode = (LeafNode) node;
+            if (lnode.getSv1() != null) {
+                double d_sv1 = target.getData().minDist(lnode.getSv1().getData(), null);
+                updateNearestNeighbors(nearestNeighbors, lnode.getSv1(), d_sv1, k, target);
+            }
+            if (lnode.getSv2() != null) {
+                double d_sv2 = target.getData().minDist(lnode.getSv2().getData(), null);
+                updateNearestNeighbors(nearestNeighbors, lnode.getSv2(), d_sv2, k, target);
+            }
             for (MVPDP point : lnode.getPoints()) {
                 double pointDistance = target.getData().minDist(point.getData(), null);
                 updateNearestNeighbors(nearestNeighbors, point, pointDistance, k, target);
@@ -566,6 +687,47 @@ public class MVPTree {
         }
     }
 
+    public List<Point<?>> mvpKnnSearch(MVPDP target, int k) {
+//        PriorityQueue<MVPDP> nearestNeighbors = new PriorityQueue<>(k, Comparator.comparingDouble(a -> -a.getData().minDist(target.getData(), null)));
+        PriorityQueue<MVPDP> nearestNeighbors = new PriorityQueue<>(k, new Comparator<MVPDP>() {
+            @Override
+            public int compare(MVPDP a, MVPDP b) {
+
+                double distA = a.getData().minDist(target.getData(), null);
+                double distB = b.getData().minDist(target.getData(), null);
+                return -Double.compare(distA, distB);
+            }
+        });
+        target.setPath(new ArrayList<>(pathLength)); // Initialize the path with the maximum expected length
+        retrieveKnn(node, target, nearestNeighbors, k, 0);
+        return convertResults(nearestNeighbors);
+    }
+
+//    private void retrieveKnn(Node node, MVPDP target, PriorityQueue<MVPDP> nearestNeighbors, int k, int level) {
+//        if (node == null) return;
+//
+//        double distance = target.getData().minDist(((InternalNode) node).getSv1(), null);
+//        if (Double.isNaN(distance) || distance < 0.0) {
+//            return; // Optionally, throw an exception or handle the error as needed
+//        }
+//        updateNearestNeighbors(nearestNeighbors, ((InternalNode) node).getSv1(), distance, k, target);
+//
+//        if (node.getType() == NodeType.INTERNAL) {
+//            InternalNode inode = (InternalNode) node;
+//            for (Object child : inode.getChildNodes()) {
+//                if (child != null && (nearestNeighbors.size() < k || target.getData().minDist(((InternalNode) child).getSv1(), null) < nearestNeighbors.peek().getData().minDist(target.getData(), null))) {
+//                    retrieveKnn((Node) child, target, nearestNeighbors, k, level + 1);
+//                }
+//            }
+//        } else if (node.getType() == NodeType.LEAF) {
+//            LeafNode lnode = (LeafNode) node;
+//            for (MVPDP point : lnode.getPoints()) {
+//                double pointDistance = target.getData().minDist(point.getData(), null);
+//                updateNearestNeighbors(nearestNeighbors, point, pointDistance, k, target);
+//            }
+//        }
+//    }
+//
     private void updateNearestNeighbors(PriorityQueue<MVPDP> nearestNeighbors, MVPDP candidate, double distance, int k, MVPDP target) {
         if (nearestNeighbors.size() < k) {
             nearestNeighbors.add(candidate);

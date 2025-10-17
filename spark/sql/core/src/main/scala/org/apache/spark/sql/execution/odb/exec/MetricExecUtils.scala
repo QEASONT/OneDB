@@ -58,7 +58,7 @@ object MetricExecUtils {
           val exprOptionMetricMaxDis = logicalPlan.output.find(attr => resolver(attr.name, "metricMaxDis"))
           exprOptionMetricMaxDis.getOrElse(throw new AnalysisException(s"Column metricMaxDis does not exist."))
         }
-        //        val aaa = rdd.collect()
+
         val indexedRelation = ODBIndexedRelation(rdd, attribute)()
         val catalog = sqlContext.sparkSession.sessionState.catalog
         if (logicalPlan.children.nonEmpty) {

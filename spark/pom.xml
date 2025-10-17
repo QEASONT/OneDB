@@ -2728,6 +2728,18 @@
             <id>sparkr</id>
         </profile>
         <profile>
+            <id>dita</id>
+        </profile>
+        <profile>
+            <id>mchord</id>
+        </profile>
+        <profile>
+            <id>amds</id>
+        </profile>
+        <profile>
+            <id>mbt</id>
+        </profile>
+        <profile>
             <id>odb</id>
         </profile>
     </profiles>

@@ -30,6 +30,16 @@ import org.apache.spark.sql.catalyst.{FunctionIdentifier, TableIdentifier}
 import org.apache.spark.sql.catalyst.analysis._
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.aggregate.{First, Last}
+import org.apache.spark.sql.catalyst.expressions.dita._
+import org.apache.spark.sql.catalyst.expressions.dita.common.shape.{Point, Rectangle}
+import org.apache.spark.sql.catalyst.expressions.dita.common.trajectory.Trajectory
+import org.apache.spark.sql.catalyst.expressions.mchord._
+import org.apache.spark.sql.catalyst.expressions.mchord.common.shape.{Point => MetricPoint}
+import org.apache.spark.sql.catalyst.expressions.mchord.common.metric.MetricData
+import org.apache.spark.sql.catalyst.expressions.amds._
+import org.apache.spark.sql.catalyst.expressions.amds.common.shape.{Point => AMDSPoint}
+import org.apache.spark.sql.catalyst.expressions.mbt._
+import org.apache.spark.sql.catalyst.expressions.mbt.common.shape.{Point => MBTPoint}
 import org.apache.spark.sql.catalyst.expressions.odb._
 import org.apache.spark.sql.catalyst.expressions.odb.common.metric
 import org.apache.spark.sql.catalyst.expressions.odb.common.shape.{Point => ODBPoint}
@@ -1107,7 +1117,7 @@ class AstBuilder(conf: SQLConf) extends SqlBaseBaseVisitor[AnyRef] with Logging 
    */
   override def visitPointExpression(ctx: SqlBaseParser.PointExpressionContext):
   Literal = withOrigin(ctx) {
-   null
+    Literal(Point(ctx.coords.asScala.map(_.getText.toDouble).toArray), DataTypes.NullType)
   }
 
   /*
@@ -1115,7 +1125,10 @@ class AstBuilder(conf: SQLConf) extends SqlBaseBaseVisitor[AnyRef] with Logging 
    */
   override def visitTrajectoryExpression(ctx: TrajectoryExpressionContext):
   Literal = withOrigin(ctx) {
-    null
+    Literal(
+      Trajectory(ctx.points.asScala.map(x =>
+        visitPointExpression(x).value.asInstanceOf[Point]).toArray),
+      DataTypes.NullType)
   }
 
   /*
@@ -1123,7 +1136,13 @@ class AstBuilder(conf: SQLConf) extends SqlBaseBaseVisitor[AnyRef] with Logging 
    */
   override def visitMetricPointExpression(ctx: SqlBaseParser.MetricPointExpressionContext):
   Literal = withOrigin(ctx) {
-  null
+    if (ctx.mcoords.coordsString != null) {
+      Literal(MetricPoint[Any](ctx.mcoords.coordsString
+        .toString().stripPrefix("'").stripSuffix("'")), DataTypes.NullType)
+    } else {
+      Literal(MetricPoint[Any](ctx.mcoords.coords
+        .asScala.map(_.getText.toDouble).toArray), DataTypes.NullType)
+    }
   }
 
 
@@ -1132,19 +1151,38 @@ class AstBuilder(conf: SQLConf) extends SqlBaseBaseVisitor[AnyRef] with Logging 
    */
   override def visitMetricSimilarityExpression
   (ctx: MetricSimilarityExpressionContext): MetricSimilarityExpression = withOrigin(ctx) {
-   null
+    val left = if (ctx.leftTable != null) {
+      expression(ctx.leftTable)
+    } else {
+      visitMetricPointExpression(ctx.leftMetricPoint)
+    }
+    val right = if (ctx.rightTable != null) {
+      expression(ctx.rightTable)
+    } else {
+      visitMetricPointExpression(ctx.rightMetricPoint)
+    }
+    ctx.function match {
+      case function if function.EUCLID() != null => MetricSimilarityExpression(
+        MetricSimilarityFunction.EUCLID, left, right)
+
+    }
   }
 
   /**
    * Create a trajectory similarity with knn expression
    */
   override def visitMetricSimilarityWithKNN(ctx: MetricSimilarityWithKNNContext):
- null
+  MetricSimilarityWithKNNExpression = withOrigin(ctx) {
+    MetricSimilarityWithKNNExpression(
+      visitMetricSimilarityExpression(ctx.metricSimilarityExpression()),
+      ctx.count.getText.toInt)
   }
 
   override def visitMetricRange(ctx: MetricRangeContext):
   MetricSimilarityRangeExpression = withOrigin(ctx) {
- null
+    val center = visitMetricPointExpression(ctx.center).value.asInstanceOf[MetricPoint[Any]]
+    val radius = ctx.radius.getText.toDouble
+    MetricSimilarityRangeExpression(expression(ctx.leftTable), center, radius)
   }
 
   /*
@@ -1152,7 +1190,13 @@ class AstBuilder(conf: SQLConf) extends SqlBaseBaseVisitor[AnyRef] with Logging 
    */
   override def visitAmdsPointExpression(ctx: SqlBaseParser.AmdsPointExpressionContext):
   Literal = withOrigin(ctx) {
-  null
+    if (ctx.mcoords.coordsString != null) {
+      Literal(AMDSPoint[Any](ctx.mcoords.coordsString
+        .toString().stripPrefix("'").stripSuffix("'"), null), DataTypes.NullType)
+    } else {
+      Literal(AMDSPoint[Any](ctx.mcoords.coords
+        .asScala.map(_.getText.toDouble).toArray, null), DataTypes.NullType)
+    }
   }
 
 
@@ -1161,7 +1205,21 @@ class AstBuilder(conf: SQLConf) extends SqlBaseBaseVisitor[AnyRef] with Logging 
    */
   override def visitAmdsSimilarityExpression
   (ctx: AmdsSimilarityExpressionContext): AMDSSimilarityExpression = withOrigin(ctx) {
-   null
+    val left = if (ctx.leftTable != null) {
+      expression(ctx.leftTable)
+    } else {
+      visitAmdsPointExpression(ctx.leftMetricPoint)
+    }
+    val right = if (ctx.rightTable != null) {
+      expression(ctx.rightTable)
+    } else {
+      visitAmdsPointExpression(ctx.rightMetricPoint)
+    }
+    ctx.function match {
+      case function if function.EUCLID() != null => AMDSSimilarityExpression(
+        AMDSSimilarityFunction.EUCLID, left, right)
+
+    }
   }
 
   /**
@@ -1169,12 +1227,16 @@ class AstBuilder(conf: SQLConf) extends SqlBaseBaseVisitor[AnyRef] with Logging 
    */
   override def visitAmdsSimilarityWithKNN(ctx: AmdsSimilarityWithKNNContext):
   AMDSSimilarityWithKNNExpression = withOrigin(ctx) {
-  null
+    AMDSSimilarityWithKNNExpression(
+      visitAmdsSimilarityExpression(ctx.amdsSimilarityExpression()),
+      ctx.count.getText.toInt)
   }
 
   override def visitAmdsRange(ctx: AmdsRangeContext):
   AMDSSimilarityRangeExpression = withOrigin(ctx) {
-  null
+    val center = visitAmdsPointExpression(ctx.center).value.asInstanceOf[AMDSPoint[Any]]
+    val radius = ctx.radius.getText.toDouble
+    AMDSSimilarityRangeExpression(expression(ctx.leftTable), center, radius)
   }
 
   /*
@@ -1182,7 +1244,13 @@ class AstBuilder(conf: SQLConf) extends SqlBaseBaseVisitor[AnyRef] with Logging 
    */
   override def visitMbtPointExpression(ctx: SqlBaseParser.MbtPointExpressionContext):
   Literal = withOrigin(ctx) {
-   null
+    if (ctx.mcoords.coordsString != null) {
+      Literal(MBTPoint[Any](ctx.mcoords.coordsString
+        .toString().stripPrefix("'").stripSuffix("'")), DataTypes.NullType)
+    } else {
+      Literal(MBTPoint[Any](ctx.mcoords.coords
+        .asScala.map(_.getText.toDouble).toArray), DataTypes.NullType)
+    }
   }
 
   /*
@@ -1222,7 +1290,27 @@ class AstBuilder(conf: SQLConf) extends SqlBaseBaseVisitor[AnyRef] with Logging 
    */
   override def visitMbtSimilarityExpression
   (ctx: MbtSimilarityExpressionContext): MBTSimilarityExpression = withOrigin(ctx) {
-   null
+    val left = if (ctx.leftTable != null) {
+      expression(ctx.leftTable)
+    } else {
+      visitMbtPointExpression(ctx.leftMetricPoint)
+    }
+    val right = if (ctx.rightTable != null) {
+      expression(ctx.rightTable)
+    } else {
+      visitMbtPointExpression(ctx.rightMetricPoint)
+    }
+    ctx.function match {
+      case function if function.EUCLID() != null => MBTSimilarityExpression(
+        MBTSimilarityFunction.EUCLID, left, right)
+      case function if function.L1() != null => MBTSimilarityExpression(
+        MBTSimilarityFunction.L1, left, right)
+      case function if function.COSINE() != null => MBTSimilarityExpression(
+        MBTSimilarityFunction.COSINE, left, right)
+      case function if function.EDIT() != null => MBTSimilarityExpression(
+        MBTSimilarityFunction.EDIT, left, right)
+
+    }
   }
 
   /**
@@ -1249,7 +1337,9 @@ class AstBuilder(conf: SQLConf) extends SqlBaseBaseVisitor[AnyRef] with Logging 
    */
   override def visitMbtSimilarityWithKNN(ctx: MbtSimilarityWithKNNContext):
   MBTSimilarityWithKNNExpression = withOrigin(ctx) {
-  null
+    MBTSimilarityWithKNNExpression(
+      visitMbtSimilarityExpression(ctx.mbtSimilarityExpression()),
+      ctx.count.getText.toInt)
   }
 
   /**
@@ -1264,7 +1354,12 @@ class AstBuilder(conf: SQLConf) extends SqlBaseBaseVisitor[AnyRef] with Logging 
 
   override def visitMetricSimilarityFunction
   (ctx: MetricSimilarityFunctionContext): MBTSimilarityFunction = withOrigin(ctx) {
-   null
+    ctx match {
+      case function if function.EUCLID() != null => MBTSimilarityFunction.EUCLID
+      case function if function.L1() != null => MBTSimilarityFunction.L1
+      case function if function.COSINE() != null => MBTSimilarityFunction.COSINE
+      case function if function.EDIT() != null => MBTSimilarityFunction.EDIT
+    }
   }
 
   //  override def visitOdbSimilarityFunction
@@ -1279,7 +1374,10 @@ class AstBuilder(conf: SQLConf) extends SqlBaseBaseVisitor[AnyRef] with Logging 
 
   override def visitMbtRange(ctx: MbtRangeContext):
   MBTSimilarityRangeExpression = withOrigin(ctx) {
-   null
+    val center = visitMbtPointExpression(ctx.center).value.asInstanceOf[MBTPoint[Any]]
+    val radius = ctx.radius.getText.toDouble
+    MBTSimilarityRangeExpression(expression(ctx.leftTable),
+      visitMetricSimilarityFunction(ctx.function), center, radius)
   }
 
   override def visitOdbRange(ctx: OdbRangeContext):
@@ -1296,7 +1394,26 @@ class AstBuilder(conf: SQLConf) extends SqlBaseBaseVisitor[AnyRef] with Logging 
    */
   override def visitTrajectorySimilarityExpression
   (ctx: TrajectorySimilarityExpressionContext): TrajectorySimilarityExpression = withOrigin(ctx) {
-  null
+    val left = if (ctx.leftTable != null) {
+      expression(ctx.leftTable)
+    } else {
+      visitTrajectoryExpression(ctx.leftTrajectory)
+    }
+    val right = if (ctx.rightTable != null) {
+      expression(ctx.rightTable)
+    } else {
+      visitTrajectoryExpression(ctx.rightTrajectory)
+    }
+    ctx.function match {
+      case function if function.DTW != null => TrajectorySimilarityExpression(
+        TrajectorySimilarityFunction.DTW, left, right)
+      case function if function.FRECHET() != null => TrajectorySimilarityExpression(
+        TrajectorySimilarityFunction.FRECHET, left, right)
+      case function if function.LCSS() != null => TrajectorySimilarityExpression(
+        TrajectorySimilarityFunction.LCSS, left, right)
+      case function if function.EDR() != null => TrajectorySimilarityExpression(
+        TrajectorySimilarityFunction.FRECHET, left, right)
+    }
   }
 
   /**
@@ -1304,7 +1421,9 @@ class AstBuilder(conf: SQLConf) extends SqlBaseBaseVisitor[AnyRef] with Logging 
    */
   override def visitTrajectorySimilarityWithThreshold(ctx: TrajectorySimilarityWithThresholdContext):
   TrajectorySimilarityWithThresholdExpression = withOrigin(ctx) {
-   null
+    TrajectorySimilarityWithThresholdExpression(
+      visitTrajectorySimilarityExpression(ctx.trajectorySimilarityExpression()),
+      ctx.threshold.getText.toDouble)
   }
 
   /**
@@ -1312,7 +1431,9 @@ class AstBuilder(conf: SQLConf) extends SqlBaseBaseVisitor[AnyRef] with Logging 
    */
   override def visitTrajectorySimilarityWithKNN(ctx: TrajectorySimilarityWithKNNContext):
   TrajectorySimilarityWithKNNExpression = withOrigin(ctx) {
-  null
+    TrajectorySimilarityWithKNNExpression(
+      visitTrajectorySimilarityExpression(ctx.trajectorySimilarityExpression()),
+      ctx.count.getText.toInt)
   }
 
   /**
@@ -1320,12 +1441,16 @@ class AstBuilder(conf: SQLConf) extends SqlBaseBaseVisitor[AnyRef] with Logging 
    */
   override def visitTrajectoryMBRRange(ctx: TrajectoryMBRRangeContext):
   TrajectoryMBRRangeExpression = withOrigin(ctx) {
-   null
+    val mbr = Rectangle(visitPointExpression(ctx.lowPoint).value.asInstanceOf[Point],
+      visitPointExpression(ctx.highPoint).value.asInstanceOf[Point])
+    TrajectoryMBRRangeExpression(expression(ctx.leftTable), mbr)
   }
 
   override def visitTrajectoryCircleRange(ctx: TrajectoryCircleRangeContext):
   TrajectoryCircleRangeExpression = withOrigin(ctx) {
- null
+    val center = visitPointExpression(ctx.center).value.asInstanceOf[Point]
+    val radius = ctx.radius.getText.toDouble
+    TrajectoryCircleRangeExpression(expression(ctx.leftTable), center, radius)
   }
 
   /**

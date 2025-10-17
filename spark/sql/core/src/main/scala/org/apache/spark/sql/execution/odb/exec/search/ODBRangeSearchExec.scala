@@ -56,14 +56,11 @@ case class ODBRangeSearchExec(leftQuery: MetricData, rightKey: Expression,
 
     val rightODBRDD = MetricExecUtils.getODBRDD(sqlContext, rightResults,
       rightKey, rightLogicalPlan, right)
-    var start = System.currentTimeMillis()
-    var end = start
-    start = System.currentTimeMillis()
+
     // get answer
     val search = MetricRangeAlgorithms.DistributedSearch
     val answerRDD = search.search(sparkContext, leftQuery, rightODBRDD, threshold, queryM)
-    end = System.currentTimeMillis()
-    logWarning(s"ODB Range Search Time: ${end - start} ms")
+
     val outputRDD = answerRDD.map(x => x._1.asInstanceOf[ODBIternalRow].row)
     logWarning(s"${outputRDD.count()}")
     outputRDD.asInstanceOf[RDD[InternalRow]]

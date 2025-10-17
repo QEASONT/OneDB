@@ -36,6 +36,12 @@ case class MetricData(points: Array[Point[Any]]) {
     }.sum
   }
 
+  def minDist(other: MetricData, nonZeroMetric: Array[(Double, Int)]): Double = {
+    nonZeroMetric.map {
+      case (weight, index) => weight * points(index).minDist(other.points(index))
+    }.sum
+  }
+
   def minDist(other: Point[Any]): Double = {
     val metricIndex = other.metricIndex
     points(metricIndex).minDist(other)

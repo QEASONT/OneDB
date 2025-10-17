@@ -24,6 +24,7 @@ import org.apache.spark.sql.catalyst.expressions.{Attribute, Expression}
 import org.apache.spark.sql.catalyst.expressions.odb.ODBSimilarityFunction
 import org.apache.spark.sql.catalyst.expressions.odb.common.metric.{MetricData, ODBSimilarity}
 import org.apache.spark.sql.catalyst.expressions.odb.common.shape.{Point, Shape}
+// import org.apache.spark.sql.catalyst.expressions.mchord.common.
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.execution.odb.algorithms.MetricSimilarityWithKNNAlgorithms
 import org.apache.spark.sql.execution.odb.exec.MetricExecUtils
@@ -54,20 +55,16 @@ case class ODBSimilarityWithKNNSearchExec(leftQuery: MetricData, rightKey: Expre
 
     logWarning("Applying efficient metric similarity search algorithm!")
 
-    val rightODBRDD = MetricExecUtils.getODBRDD(sqlContext, rightResults,
+    val rightMchordRDD = MetricExecUtils.getODBRDD(sqlContext, rightResults,
       rightKey, rightLogicalPlan, right)
-    var start = System.currentTimeMillis()
-    var end = start
-    start = System.currentTimeMillis()
 
     // get answer
     val search = MetricSimilarityWithKNNAlgorithms.DistributedSearch
     val answerRDD = search.search(sparkContext, leftQuery,
-      rightODBRDD, count, queryM)
-    end = System.currentTimeMillis()
-    logWarning(s"ODB kNN Search Time: ${end - start} ms")
+      rightMchordRDD, count, queryM)
+
     val outputRDD = answerRDD.map(x => x._1.asInstanceOf[ODBIternalRow].row)
-    logWarning(s"${outputRDD.count()}")
+
     outputRDD.asInstanceOf[RDD[InternalRow]]
   }
 }

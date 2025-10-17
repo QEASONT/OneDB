@@ -21,6 +21,10 @@ import org.apache.spark.annotation.{Experimental, InterfaceStability}
 import org.apache.spark.sql.{ExperimentalMethods, SparkSession, UDFRegistration, _}
 import org.apache.spark.sql.catalyst.analysis.{Analyzer, FunctionRegistry}
 import org.apache.spark.sql.catalyst.catalog.SessionCatalog
+import org.apache.spark.sql.catalyst.expressions.dita.index.IndexRegistry
+import org.apache.spark.sql.catalyst.expressions.mchord.index.{IndexRegistry => MchordIndexRegistry}
+import org.apache.spark.sql.catalyst.expressions.amds.index.{IndexRegistry => AMDSIndexRegistry}
+import org.apache.spark.sql.catalyst.expressions.mbt.index.{IndexRegistry => MBTIndexRegistry}
 import org.apache.spark.sql.catalyst.expressions.odb.index.{IndexRegistry => ODBIndexRegistry}
 import org.apache.spark.sql.catalyst.optimizer.Optimizer
 import org.apache.spark.sql.catalyst.parser.ParserInterface
@@ -104,6 +108,19 @@ abstract class BaseSessionStateBuilder(
    *
    * This either gets cloned from a pre-existing version or cloned a new registry.
    */
+  protected lazy val indexRegistry: IndexRegistry = {
+    parentState.map(_.indexRegistry).getOrElse(new IndexRegistry).clone()
+  }
+
+  protected lazy val mchordIndexRegistry: MchordIndexRegistry = {
+    parentState.map(_.mchordIndexRegistry).getOrElse(new MchordIndexRegistry).clone()
+  }
+  protected lazy val amdsIndexRegistry: AMDSIndexRegistry = {
+    parentState.map(_.amdsIndexRegistry).getOrElse(new AMDSIndexRegistry).clone()
+  }
+  protected lazy val mbtIndexRegistry: MBTIndexRegistry = {
+    parentState.map(_.mbtIndexRegistry).getOrElse(new MBTIndexRegistry).clone()
+  }
   protected lazy val odbIndexRegistry: ODBIndexRegistry = {
     parentState.map(_.odbIndexRegistry).getOrElse(new ODBIndexRegistry).clone()
   }
@@ -144,6 +161,10 @@ abstract class BaseSessionStateBuilder(
       session.sharedState.externalCatalog,
       session.sharedState.globalTempViewManager,
       functionRegistry,
+      indexRegistry,
+      mchordIndexRegistry,
+      amdsIndexRegistry,
+      mbtIndexRegistry,
       odbIndexRegistry,
       conf,
       SessionState.newHadoopConf(session.sparkContext.hadoopConfiguration, conf),
@@ -297,6 +318,10 @@ abstract class BaseSessionStateBuilder(
       conf,
       experimentalMethods,
       functionRegistry,
+      indexRegistry,
+      mchordIndexRegistry,
+      amdsIndexRegistry,
+      mbtIndexRegistry,
       odbIndexRegistry,
       udfRegistration,
       catalog,

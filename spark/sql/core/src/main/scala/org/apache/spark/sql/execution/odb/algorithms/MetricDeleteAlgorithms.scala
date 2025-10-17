@@ -20,36 +20,40 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.{PartitionPruningRDD, RDD}
 import org.apache.spark.sql.catalyst.expressions.odb.PackedPartition
 import org.apache.spark.sql.catalyst.expressions.odb.common.ODBConfigConstants
+import org.apache.spark.sql.catalyst.expressions.odb.common.metric.MetricData
 import org.apache.spark.sql.catalyst.expressions.odb.common.shape.Point
 import org.apache.spark.sql.execution.odb.index.global.{GlobalBPlusTreeIndex, GlobalODBIndex}
-import org.apache.spark.sql.execution.odb.index.local.{LocalODBIndex, LocalMTreeIndex}
+import org.apache.spark.sql.execution.odb.index.local.{LocalMTreeIndex, LocalODBIndex}
 import org.apache.spark.sql.execution.odb.rdd.ODBRDD
 import org.apache.spark.{HashPartitioner, SparkContext}
 
 object MetricDeleteAlgorithms {
-  // search from M-tree
-  def localSearchMode5(query: Point[Any], packedPartition: PackedPartition,
-                       threshold: Double):
-  Iterator[(Point[Any], Double)] = {
-    val localIndex = packedPartition.indexes.filter(_.isInstanceOf[LocalMTreeIndex]).head
-      .asInstanceOf[LocalMTreeIndex]
-    val answers = localIndex.getResultWithThreshold(query, threshold).iterator
-    answers
-  }
 
-  def localDelete(query: Point[Any], packedPartition: PackedPartition):
-  Iterator[(Point[Any], Double)] = {
-    val localIndex = packedPartition.indexes.filter(_.isInstanceOf[LocalMTreeIndex]).head
-      .asInstanceOf[LocalMTreeIndex]
-    val res = localIndex.deletePoint(query).iterator
+  def localDelete(query: MetricData, packedPartition: PackedPartition):
+  Iterator[(MetricData, Double)] = {
+    val localIndex = packedPartition.indexes.filter(_.isInstanceOf[LocalODBIndex]).head
+      .asInstanceOf[LocalODBIndex]
+    val res = localIndex.deleteMetricData(query).iterator
     res
   }
 
 
   object DistributedSearch extends Logging {
-    def search(sparkContext: SparkContext, query: Point[Any], odbRDD: ODBRDD):
-    RDD[(Point[Any], Double)] = {
-      null
+    def search(sparkContext: SparkContext, query: MetricData, odbRDD: ODBRDD):
+    RDD[(MetricData, Double)] = {
+      val bQuery = sparkContext.broadcast(query)
+      val globalODBIndex = odbRDD.globalODBIndex.asInstanceOf[GlobalODBIndex]
+      var start = System.currentTimeMillis()
+      var end = start
+      val globalCandidatePartitions = List(globalODBIndex.getPartition(bQuery.value))
+      end = System.currentTimeMillis()
+      logInfo(s"Time to get global candidate partitions: ${end - start}")
+      start = System.currentTimeMillis()
+      val answers = PartitionPruningRDD.create(odbRDD.packedRDD, globalCandidatePartitions.contains)
+        .flatMap(packedPartition => localDelete(bQuery.value, packedPartition))
+      end = System.currentTimeMillis()
+      answers
+
     }
   }
 }

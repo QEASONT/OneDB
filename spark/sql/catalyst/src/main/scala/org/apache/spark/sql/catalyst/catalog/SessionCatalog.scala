@@ -32,6 +32,16 @@ import org.apache.spark.sql.AnalysisException
 import org.apache.spark.sql.catalyst._
 import org.apache.spark.sql.catalyst.analysis._
 import org.apache.spark.sql.catalyst.analysis.FunctionRegistry.FunctionBuilder
+import org.apache.spark.sql.catalyst.expressions.dita.index.{IndexEntry, IndexRegistry, IndexedRelation}
+import org.apache.spark.sql.catalyst.expressions.mchord.index.{IndexEntry => MchordIndexEntry}
+import org.apache.spark.sql.catalyst.expressions.mchord.index.{IndexRegistry => MchordIndexRegistry}
+import org.apache.spark.sql.catalyst.expressions.mchord.index.{IndexedRelation => MchordIndexedRelation}
+import org.apache.spark.sql.catalyst.expressions.amds.index.{IndexEntry => AMDSIndexEntry}
+import org.apache.spark.sql.catalyst.expressions.amds.index.{IndexRegistry => AMDSIndexRegistry}
+import org.apache.spark.sql.catalyst.expressions.amds.index.{IndexedRelation => AMDSIndexedRelation}
+import org.apache.spark.sql.catalyst.expressions.mbt.index.{IndexEntry => MBTIndexEntry}
+import org.apache.spark.sql.catalyst.expressions.mbt.index.{IndexRegistry => MBTIndexRegistry}
+import org.apache.spark.sql.catalyst.expressions.mbt.index.{IndexedRelation => MBTIndexedRelation}
 import org.apache.spark.sql.catalyst.expressions.odb.index.{IndexEntry => ODBIndexEntry}
 import org.apache.spark.sql.catalyst.expressions.odb.index.{IndexRegistry => ODBIndexRegistry}
 import org.apache.spark.sql.catalyst.expressions.odb.index.{IndexedRelation => ODBIndexedRelation}
@@ -57,6 +67,10 @@ class SessionCatalog(
                       val externalCatalog: ExternalCatalog,
                       globalTempViewManager: GlobalTempViewManager,
                       functionRegistry: FunctionRegistry,
+                      indexRegistry: IndexRegistry,
+                      mchordIndexRegistry: MchordIndexRegistry,
+                      amdsIndexRegistry: AMDSIndexRegistry,
+                      mbtIndexRegistry: MBTIndexRegistry,
                       odbIndexRegistry: ODBIndexRegistry,
                       conf: SQLConf,
                       hadoopConf: Configuration,
@@ -75,6 +89,10 @@ class SessionCatalog(
       externalCatalog,
       new GlobalTempViewManager("global_temp"),
       functionRegistry,
+      new IndexRegistry,
+      new MchordIndexRegistry,
+      new AMDSIndexRegistry,
+      new MBTIndexRegistry,
       new ODBIndexRegistry,
       conf,
       new Configuration(),
@@ -1096,6 +1114,53 @@ class SessionCatalog(
   }
 
 
+  /**
+   * create index on the table
+   */
+  def createIndex(tableName: Option[TableIdentifier], indexName: String, plan: LogicalPlan,
+                  indexedRelation: IndexedRelation): Unit = {
+    if (indexRegistry.lookupIndex(indexName, plan).nonEmpty) {
+      logWarning("Index exists!")
+    } else {
+      indexRegistry.registerIndex(indexName, tableName.map(_.table), plan, indexedRelation)
+    }
+  }
+
+  /**
+   * create index on the table mchord
+   */
+  def createIndex(tableName: Option[TableIdentifier], indexName: String, plan: LogicalPlan,
+                  indexedRelation: MchordIndexedRelation): Unit = {
+    if (mchordIndexRegistry.lookupIndex(indexName, plan).nonEmpty) {
+      logWarning("Index exists!")
+    } else {
+      mchordIndexRegistry.registerIndex(indexName, tableName.map(_.table), plan, indexedRelation)
+    }
+  }
+
+  /**
+   * create index on the table AMDS
+   */
+  def createIndex(tableName: Option[TableIdentifier], indexName: String, plan: LogicalPlan,
+                  indexedRelation: AMDSIndexedRelation): Unit = {
+    if (amdsIndexRegistry.lookupIndex(indexName, plan).nonEmpty) {
+      logWarning("Index exists!")
+    } else {
+      amdsIndexRegistry.registerIndex(indexName, tableName.map(_.table), plan, indexedRelation)
+    }
+  }
+
+  /**
+   * create index on the table MBT
+   */
+  def createIndex(tableName: Option[TableIdentifier], indexName: String, plan: LogicalPlan,
+                  indexedRelation: MBTIndexedRelation): Unit = {
+    if (mbtIndexRegistry.lookupIndex(indexName, plan).nonEmpty) {
+      logWarning("Index exists!")
+    } else {
+      mbtIndexRegistry.registerIndex(indexName, tableName.map(_.table), plan, indexedRelation)
+    }
+  }
 
   /**
    * create index on the table ODB
@@ -1121,7 +1186,37 @@ class SessionCatalog(
     }
   }
 
-  
+  /**
+   * lookup index
+   */
+  def lookupIndex(tableName: Option[TableIdentifier], indexName: String,
+                  plan: LogicalPlan): Option[IndexEntry] = {
+    indexRegistry.lookupIndex(indexName, plan)
+  }
+
+  /**
+   * lookup index mchord
+   */
+  def lookupMchordIndex(tableName: Option[TableIdentifier], indexName: String,
+                        plan: LogicalPlan): Option[MchordIndexEntry] = {
+    mchordIndexRegistry.lookupIndex(indexName, plan)
+  }
+
+  /**
+   * lookup index amds
+   */
+  def lookupAMDSIndex(tableName: Option[TableIdentifier], indexName: String,
+                      plan: LogicalPlan): Option[AMDSIndexEntry] = {
+    amdsIndexRegistry.lookupIndex(indexName, plan)
+  }
+
+  /**
+   * lookup index mbt
+   */
+  def lookupMBTIndex(tableName: Option[TableIdentifier], indexName: String,
+                     plan: LogicalPlan): Option[MBTIndexEntry] = {
+    mbtIndexRegistry.lookupIndex(indexName, plan)
+  }
 
   /**
    * lookup index odb
@@ -1131,7 +1226,34 @@ class SessionCatalog(
     odbIndexRegistry.lookupIndex(indexName, plan)
   }
 
-  
+  /**
+   * lookup index
+   */
+  def lookupIndex(plan: LogicalPlan): Option[IndexEntry] = {
+    indexRegistry.lookupIndex(plan)
+  }
+
+  /**
+   * lookup index mchord
+   */
+  def lookupMchordIndex(plan: LogicalPlan): Option[MchordIndexEntry] = {
+    mchordIndexRegistry.lookupIndex(plan)
+  }
+
+  /**
+   * lookup index amds
+   */
+  def lookupAMDSIndex(plan: LogicalPlan): Option[AMDSIndexEntry] = {
+    amdsIndexRegistry.lookupIndex(plan)
+  }
+
+  /**
+   * lookup index mbt
+   */
+  def lookupMBTIndex(plan: LogicalPlan): Option[MBTIndexEntry] = {
+    mbtIndexRegistry.lookupIndex(plan)
+  }
+
   /**
    * lookup index odb
    */
@@ -1139,7 +1261,41 @@ class SessionCatalog(
     odbIndexRegistry.lookupIndex(plan)
   }
 
- 
+  /**
+   * drop index
+   */
+  def dropIndex(plan: LogicalPlan): Unit = {
+    if (!indexRegistry.dropIndex(plan)) {
+      throw new NoSuchIndexException(plan.nodeName)
+    }
+  }
+
+  /**
+   * drop index mchord
+   */
+  def dropMchordIndex(plan: LogicalPlan): Unit = {
+    if (!mchordIndexRegistry.dropIndex(plan)) {
+      throw new NoSuchIndexException(plan.nodeName)
+    }
+  }
+
+  /**
+   * drop index amds
+   */
+  def dropAMDSIndex(plan: LogicalPlan): Unit = {
+    if (!amdsIndexRegistry.dropIndex(plan)) {
+      throw new NoSuchIndexException(plan.nodeName)
+    }
+  }
+
+  /**
+   * drop index mbt
+   */
+  def dropMBTIndex(plan: LogicalPlan): Unit = {
+    if (!mbtIndexRegistry.dropIndex(plan)) {
+      throw new NoSuchIndexException(plan.nodeName)
+    }
+  }
 
   /**
    * drop index odb
@@ -1150,7 +1306,41 @@ class SessionCatalog(
     }
   }
 
- 
+  /**
+   * drop index
+   */
+  def dropIndex(tableName: Option[TableIdentifier], indexName: String): Unit = {
+    if (!indexRegistry.dropIndex(indexName, tableName.map(_.table))) {
+      throw new NoSuchIndexException(indexName)
+    }
+  }
+
+  /**
+   * drop index mchord
+   */
+  def dropMchordIndex(tableName: Option[TableIdentifier], indexName: String): Unit = {
+    if (!mchordIndexRegistry.dropIndex(indexName, tableName.map(_.table))) {
+      throw new NoSuchIndexException(indexName)
+    }
+  }
+
+  /**
+   * drop index amds
+   */
+  def dropAMDSIndex(tableName: Option[TableIdentifier], indexName: String): Unit = {
+    if (!amdsIndexRegistry.dropIndex(indexName, tableName.map(_.table))) {
+      throw new NoSuchIndexException(indexName)
+    }
+  }
+
+  /**
+   * drop index mbt
+   */
+  def dropMBTIndex(tableName: Option[TableIdentifier], indexName: String): Unit = {
+    if (!mbtIndexRegistry.dropIndex(indexName, tableName.map(_.table))) {
+      throw new NoSuchIndexException(indexName)
+    }
+  }
 
   /**
    * drop index odb
@@ -1161,7 +1351,34 @@ class SessionCatalog(
     }
   }
 
- 
+  /**
+   * show indexes
+   */
+  def showIndexes(): Seq[String] = {
+    indexRegistry.showIndexes()
+  }
+
+  /**
+   * show indexes mchord
+   */
+  def showMchordIndexes(): Seq[String] = {
+    mchordIndexRegistry.showIndexes()
+  }
+
+  /**
+   * show indexes amds
+   */
+  def showAMDSIndexes(): Seq[String] = {
+    amdsIndexRegistry.showIndexes()
+  }
+
+  /**
+   * show indexes mbt
+   */
+  def showMBTIndexes(): Seq[String] = {
+    mbtIndexRegistry.showIndexes()
+  }
+
   /**
    * show indexes odb
    */
@@ -1362,7 +1579,8 @@ class SessionCatalog(
     clearTempTables()
     globalTempViewManager.clear()
     functionRegistry.clear()
-    odbIndexRegistry.clear()
+    indexRegistry.clear()
+    mchordIndexRegistry.clear()
     tableRelationCache.invalidateAll()
     // restore built-in functions
     FunctionRegistry.builtin.listFunction().foreach { f =>

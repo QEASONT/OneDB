@@ -24,15 +24,24 @@ import org.apache.spark.sql.execution.odb.partition.local.LocalODBPartitioner
 case class LocalODBIndex(partitioner: LocalODBPartitioner) extends LocalIndex {
 
 
-  def getResultWithThreshold(query: MetricData, threshold: Array[Double], nonZeroQueryM: Array[(Int, Int)]): Array[Long] = {
-    partitioner.getResultWithThreshold(query, threshold, nonZeroQueryM)
+  def getResultWithThreshold(query: MetricData, threshold: Array[Double], nonZeroQueryM: Array[(Double, Int)]): Array[Long] = {
+    val res = partitioner.getResultWithThreshold(query, threshold, nonZeroQueryM)
+    res
   }
 
-  def getPartition(key: Point[Any]): Int = {
-    partitioner.getPartition(key)
+  def insertMetricData(query: MetricData): List[(MetricData, Double)] = {
+    partitioner.insertMetricData(query)
   }
 
-  def getResultWithKnn(query: MetricData, k: Int, nonZeroQueryM: Array[(Int, Int)]): Double = {
+  def deleteMetricData(query: MetricData): List[(MetricData, Double)] = {
+    partitioner.deleteMetricData(query)
+  }
+
+  //  def getPartition(key: Point[Any]): Int = {
+  //    partitioner.getPartition(key)
+  //  }
+
+  def getResultWithKnn(query: MetricData, k: Int, nonZeroQueryM: Array[(Double, Int)]): Double = {
     partitioner.getResultWithKnn(query, k, nonZeroQueryM)
   }
 }

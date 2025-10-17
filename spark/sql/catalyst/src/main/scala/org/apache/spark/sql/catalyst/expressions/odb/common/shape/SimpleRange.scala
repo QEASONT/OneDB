@@ -19,7 +19,7 @@ package org.apache.spark.sql.catalyst.expressions.odb.common.shape
 case class SimpleRange(dimensionIndex: Int, low: Double, high: Double) extends Shape {
   require(low <= high, s"$low, $high")
 
-  override def minDist(other: Any, queryM: Array[(Int, Int)] = null): Double = {
+  override def minDist(other: Any, queryM: Array[(Double, Int)] = null): Double = {
     other match {
       case p: Point[Any] =>
         if (p.coord.asInstanceOf[Array[Double]](dimensionIndex) < low) {
@@ -48,5 +48,5 @@ case class SimpleRange(dimensionIndex: Int, low: Double, high: Double) extends S
     }
   }
 
-  override def dist(other: Any, queryM: Array[(Int, Int)]): Double = -1
+  override def dist(other: Any, queryM: Array[(Double, Int)]): Double = -1
 }

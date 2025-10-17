@@ -10,6 +10,7 @@ public class LeafNode extends Node{
     private List<Double> d1;
     private List<Double> d2;
     private int nbPoints;
+    private Node parent;
 
     // Constructor
     public LeafNode(NodeType type, MVPDP sv1, MVPDP sv2, List<MVPDP> points, List<Double> d1, List<Double> d2, int nbPoints) {
@@ -78,5 +79,13 @@ public class LeafNode extends Node{
 
     public void setNbPoints(int nbPoints) {
         this.nbPoints = nbPoints;
+    }
+
+    public Node getParent() {
+        return parent;
+    }
+
+    public void setParent(Node parent) {
+        this.parent = parent;
     }
 }

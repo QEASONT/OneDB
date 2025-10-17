@@ -22,7 +22,18 @@ import org.apache.spark.sql.Strategy
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.encoders.RowEncoder
 import org.apache.spark.sql.catalyst.expressions._
+import org.apache.spark.sql.catalyst.expressions.dita.common.trajectory.Trajectory
+import org.apache.spark.sql.catalyst.expressions.dita.{TrajectoryCircleRangeExpression, TrajectoryMBRRangeExpression, TrajectorySimilarityWithKNNExpression, TrajectorySimilarityWithThresholdExpression}
+import org.apache.spark.sql.catalyst.expressions.mchord.{
+  MetricSimilarityWithKNNExpression, MetricSimilarityRangeExpression,
+  MetricDeleteExpression, MetricInsertExpression
+}
+import org.apache.spark.sql.catalyst.expressions.amds.{AMDSSimilarityWithKNNExpression, AMDSSimilarityRangeExpression, AMDSDeleteExpression, AMDSInsertExpression}
+import org.apache.spark.sql.catalyst.expressions.mbt.{MBTSimilarityWithKNNExpression, MBTSimilarityRangeExpression, MBTDeleteExpression, MBTInsertExpression}
 import org.apache.spark.sql.catalyst.expressions.odb.{ODBSimilarityWithKNNExpression, ODBSimilarityRangeExpression, ODBDeleteExpression, ODBInsertExpression}
+import org.apache.spark.sql.catalyst.expressions.mchord.common.shape.Point
+import org.apache.spark.sql.catalyst.expressions.amds.common.shape.{Point => AMDSPoint}
+import org.apache.spark.sql.catalyst.expressions.mbt.common.shape.{Point => MBTPoint}
 import org.apache.spark.sql.catalyst.expressions.odb.common.shape.{Point => ODBPoint}
 import org.apache.spark.sql.catalyst.planning._
 import org.apache.spark.sql.catalyst.plans._
@@ -31,6 +42,12 @@ import org.apache.spark.sql.catalyst.plans.physical._
 import org.apache.spark.sql.execution
 import org.apache.spark.sql.execution.columnar.{InMemoryRelation, InMemoryTableScanExec}
 import org.apache.spark.sql.execution.command._
+import org.apache.spark.sql.execution.dita.exec.join.{TrajectorySimilarityWithKNNJoinExec, TrajectorySimilarityWithThresholdJoinExec}
+import org.apache.spark.sql.execution.dita.exec.search.{TrajectoryRangeSearchExec, TrajectorySimilarityWithKNNSearchExec, TrajectorySimilarityWithThresholdSearchExec}
+import org.apache.spark.sql.execution.dita.sql.{ExtractTrajectorySimilarityWithKNNJoin, ExtractTrajectorySimilarityWithThresholdJoin}
+import org.apache.spark.sql.execution.mchord.exec.search.{MetricDeleteExec, MetricInsertExec, MetricRangeSearchExec, MetricSimilarityWithKNNSearchExec}
+import org.apache.spark.sql.execution.amds.exec.{AMDSDeleteExec, AMDSInsertExec, AMDSRangeSearchExec, AMDSSimilarityWithKNNSearchExec}
+import org.apache.spark.sql.execution.mbt.exec.search.{MBTSimilarityWithKNNSearchExec, MBTRangeSearchExec, MBTDeleteExec, MBTInsertExec}
 import org.apache.spark.sql.execution.odb.exec.search.{ODBSimilarityWithKNNSearchExec, ODBRangeSearchExec, ODBDeleteExec, ODBInsertExec}
 import org.apache.spark.sql.execution.exchange.ShuffleExchange
 import org.apache.spark.sql.execution.joins.{BuildLeft, BuildRight}

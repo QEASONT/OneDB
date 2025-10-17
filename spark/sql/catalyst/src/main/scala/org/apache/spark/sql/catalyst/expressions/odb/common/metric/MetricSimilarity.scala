@@ -174,28 +174,20 @@ object ODBSimilarity {
       val n = s2.length
       val dist = Array.ofDim[Int](m + 1, n + 1)
 
-      // initialize matrix
-      (0 to m).foreach { i => dist(i)(0) = if (i > 0) dist(i - 1)(0) + s1(i - 1).toInt else 0 }
-      (0 to n).foreach { j => dist(0)(j) = if (j > 0) dist(0)(j - 1) + s2(j - 1).toInt else 0 }
 
-      // calculate edit dist
-      (1 to m).foreach { i =>
-        (1 to n).foreach { j =>
-          val replaceCost = math.abs(s1(i - 1).toInt - s2(j - 1).toInt)
-          val insertCost = dist(i)(j - 1) + s2(j - 1).toInt
-          val deleteCost = dist(i - 1)(j) + s1(i - 1).toInt
-          val replaceCostTotal = dist(i - 1)(j - 1) + replaceCost
-          dist(i)(j) = min(min(insertCost, deleteCost), replaceCostTotal)
+      for (i <- 0 to m) dist(i)(0) = i
+      for (j <- 0 to n) dist(0)(j) = j
 
-          // swap
-          //      if (i > 1 && j > 1 && s1(i - 1) == s2(j - 2) && s1(i - 2) == s2(j - 1)) {
-          //        val swapCost = dist(i - 2)(j - 2) + math.abs(s1(i - 1).toInt - s1(i - 2).toInt) + math.abs(s2(j - 1).toInt - s2(j - 2).toInt)
-          //        dist(i)(j) = min(dist(i)(j), swapCost)
-          //      }
-        }
+      
+      for (i <- 1 to m; j <- 1 to n) {
+        val cost = if (s1(i - 1) == s2(j - 1)) 0 else 1
+        dist(i)(j) = math.min(
+          math.min(dist(i - 1)(j) + 1, dist(i)(j - 1) + 1),
+          dist(i - 1)(j - 1) + cost
+        )
       }
 
-      dist(m)(n)
+      dist(m)(n).toDouble
     }
 
 
@@ -275,9 +267,9 @@ object ODBSimilarity {
         case Some(function) => function
         case None =>
           val conf = new Configuration()
-//          val fs = FileSystem.get(conf)
+          //          val fs = FileSystem.get(conf)
           val path = new Path(hdfsPath)
-//          val inputStream = fs.open(path)
+          //          val inputStream = fs.open(path)
 
           val fs = FileSystem.get(path.toUri, new Configuration())
           val inputStream = fs.open(path)

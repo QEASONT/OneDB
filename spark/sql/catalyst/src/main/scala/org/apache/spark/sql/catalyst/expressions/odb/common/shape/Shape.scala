@@ -20,8 +20,8 @@ import org.apache.spark.sql.catalyst.expressions.odb.ODBSimilarityFunction
 import org.apache.zookeeper.KeeperException.UnimplementedException
 
 abstract class Shape extends Serializable {
-  def minDist(other: Any, queryM: Array[(Int, Int)] = null): Double
-  def dist(other: Any, queryM: Array[(Int, Int)] = null): Double
+  def minDist(other: Any, queryM: Array[(Double, Int)] = null): Double
+  def dist(other: Any, queryM: Array[(Double, Int)] = null): Double
 
   //  def expandMultiDimension(geoObj: Shape): MultiDimension
   //  def increaseCount(value: Int): Unit

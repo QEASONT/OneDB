@@ -19,23 +19,24 @@ package org.apache.spark.sql.catalyst.expressions.odb.common
 object ODBConfigConstants {
 
   val DEBUG: Boolean = false
-  var GLOBAL_INDEXED_PIVOT_COUNT = 9 // parameter 1
-  var PIVOT_INDEX: Int = 10000 // useless
+  var GLOBAL_INDEXED_PIVOT_COUNT = 600 // parameter 1
+  var PIVOT_INDEX: Int = 20000 // useless
   val NUM_HNSW_PARTITIONS = 100 // useless
   val RPCHost = "127.0.0.1"
   val RPCPort = 50051
   val N = 9
+  val ODB_KNN_ESTIMATED_RATE_DEFAULT = 1
 
-  var SAMPLE_SIZE: Long = 1L * 10 * 1024 * 1024 // parameter 2
 
   // rtree
-  var MIN_SAMPLE_SIZE: Long = 1L * 1024 * 1024 // parameter 3
-  var MAX_SAMPLE_SIZE: Long = 2048L * 1024 * 1024 // parameter 4
-  var RTREE_GLOBAL_MAX_ENTRIES_PER_NODE = 5 // parameter 5
-  var RTREE_LOCAL_MAX_ENTRIES_PER_NODE = 5 // parameter 6
+  var SAMPLE_SIZE: Long = 20000 // parameter 2
 
-  var RTREE_GLOBAL_NUM_PARTITIONS = 20 // parameter 7
-  var RTREE_LOCAL_NUM_PARTITIONS = 20 // parameter 8
+  var RTREE_GLOBAL_MAX_ENTRIES_PER_NODE = 100 // parameter 4
+  var RTREE_LOCAL_MAX_ENTRIES_PER_NODE = 100 // parameter 5
+
+  var RTREE_GLOBAL_NUM_PARTITIONS = 20 // parameter 6
+  var RTREE_LOCAL_NUM_PARTITIONS = 20 // parameter 7
+  val MAX_ENTRIES_PER_NODE = 10
 
   // BPlusTree
   var BPlusTreeOrder = 30

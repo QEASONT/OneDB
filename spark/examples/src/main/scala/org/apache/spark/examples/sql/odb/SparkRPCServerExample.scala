@@ -4,21 +4,28 @@ import org.apache.spark.{SecurityManager, SparkConf, SparkContext, SparkEnv}
 import org.apache.spark.rpc._
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.{SecurityManager, SparkConf}
-
-
 import py4j.GatewayServer
+
+import java.net.InetAddress
+import java.util
 
 object SparkRPCServerExample {
 
   def main(args: Array[String]): Unit = {
-    val server = new GatewayServer(new App, 25333, "localhost", 0, 0)
-    server.start()
+    val host = InetAddress.getLocalHost()
+    try {
+      val server = new GatewayServer(new App, 25333, 0, host, null, 0, 0, null)
+      println("Starting Py4J GatewayServer on " + host + "...")
+      server.start()
+    }
   }
 }
 
 
 class App {
-  def addition(first: Int, second: Int): Int = first + second
+  def sayHello(string: String): String = {
+    "Hello, " + string
+  }
 
   def runSpark(sampleSize: Int,
                globalIndexedPivotCount: Int,
@@ -26,7 +33,7 @@ class App {
                rtreeLocalMaxEntriesPerNode: Int,
                rtreeGlobalNumPartitions: Int,
                rtreeLocalNumPartitions: Int
-              ): (Int, Long, Long) = {
+              ): util.ArrayList[Long] = {
     TuningMain.runSpark(sampleSize, globalIndexedPivotCount, rtreeGlobalMaxEntriesPerNode, rtreeLocalMaxEntriesPerNode, rtreeGlobalNumPartitions, rtreeLocalNumPartitions)
   }
 }
