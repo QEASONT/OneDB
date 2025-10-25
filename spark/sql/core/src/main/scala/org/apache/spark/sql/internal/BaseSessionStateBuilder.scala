@@ -161,10 +161,7 @@ abstract class BaseSessionStateBuilder(
       session.sharedState.externalCatalog,
       session.sharedState.globalTempViewManager,
       functionRegistry,
-      indexRegistry,
-      mchordIndexRegistry,
-      amdsIndexRegistry,
-      mbtIndexRegistry,
+
       odbIndexRegistry,
       conf,
       SessionState.newHadoopConf(session.sparkContext.hadoopConfiguration, conf),

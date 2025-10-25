@@ -31,10 +31,6 @@ import org.apache.spark.sql.catalyst.parser.SqlBaseParser._
 import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.execution.command._
 import org.apache.spark.sql.execution.datasources.{CreateTable, _}
-import org.apache.spark.sql.execution.dita.sql.{CreateTrieIndexCommand, DropTrieIndexCommand, ShowTrieIndexesCommand}
-import org.apache.spark.sql.execution.mchord.sql.{CreateMchordIndexCommand, DropMchordIndexCommand, ShowMchordIndexesCommand}
-import org.apache.spark.sql.execution.mbt.sql.{CreateMBTIndexCommand, DropMBTIndexCommand, ShowMBTIndexesCommand}
-import org.apache.spark.sql.execution.amds.sql.{CreateAMDSIndexCommand, DropAMDSIndexCommand, ShowAMDSIndexesCommand}
 import org.apache.spark.sql.execution.odb.sql.{CreateODBIndexCommand, DropODBIndexCommand, ShowODBIndexesCommand}
 
 
@@ -459,94 +455,6 @@ class SparkSqlAstBuilder(conf: SQLConf) extends AstBuilder(conf) {
       options = Option(ctx.tablePropertyList).map(visitPropertyKeyValues).getOrElse(Map.empty))
   }
 
-  /*
-   * Create a trie index, returning a [[CreateTrieIndexCommand]] logical plan
-   */
-  override def visitCreateTrieIndex(ctx: CreateTrieIndexContext): LogicalPlan = withOrigin(ctx) {
-    CreateTrieIndexCommand(visitTableIdentifier(ctx.tableIdentifier), ctx.column.getText,
-      ctx.indexIdentifier.getText)
-  }
-
-  /*
-   * Drop a trie index, returning a [[DropTrieIndexCommand]] logical plan
-   */
-  override def visitDropTrieIndex(ctx: DropTrieIndexContext): LogicalPlan = withOrigin(ctx) {
-    DropTrieIndexCommand(visitTableIdentifier(ctx.tableIdentifier), ctx.indexIdentifier.getText)
-  }
-
-  /*
-   * Show all trie indexes, returning a [[ShowTrieIndexes]] logical plan
-   */
-  override def visitShowTrieIndexes(ctx: ShowTrieIndexesContext): LogicalPlan = withOrigin(ctx) {
-    ShowTrieIndexesCommand()
-  }
-
-  /*
-   * Create M-CHORD index, returning a [[CreateMchordIndexCommand]] logical plan
-   */
-  override def visitCreateMchordIndex(ctx: CreateMchordIndexContext): LogicalPlan = withOrigin(ctx) {
-    CreateMchordIndexCommand(visitTableIdentifier(ctx.tableIdentifier), ctx.column.getText,
-      ctx.indexIdentifier.getText)
-  }
-
-  /*
-   * Drop M-CHORD index, returning a [[DropMchordIndexCommand]] logical plan
-   */
-  override def visitDropMchordIndex(ctx: DropMchordIndexContext): LogicalPlan = withOrigin(ctx) {
-    DropMchordIndexCommand(visitTableIdentifier(ctx.tableIdentifier), ctx.indexIdentifier.getText)
-  }
-
-  /*
-   * Show all M-CHORD indexes, returning a [[ShowMchordIndexes]] logical plan
-   */
-  override def visitShowMchordIndexes(ctx: ShowMchordIndexesContext): LogicalPlan = withOrigin(ctx) {
-    ShowMchordIndexesCommand()
-  }
-
-  /*
-   * Create AMDS index, returning a [[CreateAMDSIndexCommand]] logical plan
-   */
-  override def visitCreateAMDSIndex(ctx: CreateAMDSIndexContext): LogicalPlan = withOrigin(ctx) {
-    CreateAMDSIndexCommand(visitTableIdentifier(ctx.tableIdentifier), ctx.column.getText,
-      ctx.indexIdentifier.getText)
-  }
-
-  /*
-   * Drop AMDS index, returning a [[DropAMDSIndexCommand]] logical plan
-   */
-  override def visitDropAMDSIndex(ctx: DropAMDSIndexContext): LogicalPlan = withOrigin(ctx) {
-    DropAMDSIndexCommand(visitTableIdentifier(ctx.tableIdentifier), ctx.indexIdentifier.getText)
-  }
-
-  /*
-   * Show all AMDS indexes, returning a [[ShowAMDSIndexes]] logical plan
-   */
-  override def visitShowAMDSIndexes(ctx: ShowAMDSIndexesContext): LogicalPlan = withOrigin(ctx) {
-    ShowAMDSIndexesCommand()
-  }
-
-  /*
-   * Create MBT index, returning a [[CreateMBTIndexCommand]] logical plan
-   */
-  override def visitCreateMBTIndex(ctx: CreateMBTIndexContext): LogicalPlan = withOrigin(ctx) {
-    CreateMBTIndexCommand(visitMetricSimilarityFunction(ctx.function),
-      visitTableIdentifier(ctx.tableIdentifier), ctx.column.getText,
-      ctx.indexIdentifier.getText)
-  }
-
-  /*
-   * Drop MBT index, returning a [[DropMBTIndexCommand]] logical plan
-   */
-  override def visitDropMBTIndex(ctx: DropMBTIndexContext): LogicalPlan = withOrigin(ctx) {
-    DropMBTIndexCommand(visitTableIdentifier(ctx.tableIdentifier), ctx.indexIdentifier.getText)
-  }
-
-  /*
-   * Show all MBT indexes, returning a [[ShowMBTIndexes]] logical plan
-   */
-  override def visitShowMBTIndexes(ctx: ShowMBTIndexesContext): LogicalPlan = withOrigin(ctx) {
-    ShowMBTIndexesCommand()
-  }
 
   /*
    * Create ODB index, returning a [[CreateODBIndexCommand]] logical plan

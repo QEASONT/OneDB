@@ -34,7 +34,7 @@ object ODBMultiDataFrameExample extends Logging {
     val spark = SparkSession
       .builder()
       //      .master("spark://node20:7077")
-      //            .master("local[*]")
+//                  .master("local[*]")
       .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
       .getOrCreate()
 

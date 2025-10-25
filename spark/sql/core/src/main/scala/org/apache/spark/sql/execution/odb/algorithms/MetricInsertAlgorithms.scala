@@ -1,5 +1,5 @@
 /*
- *  Copyright 2023 by DIMS Project
+ *  Copyright 2025 by ODB Project
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,15 +28,6 @@ import org.apache.spark.sql.execution.odb.index.local.LocalODBIndex
 import org.apache.spark.sql.execution.odb.rdd.ODBRDD
 
 object MetricInsertAlgorithms {
-//  // search from M-tree
-//  def localSearchMode5(query: Point[Any], packedPartition: PackedPartition,
-//                       threshold: Double):
-//  Iterator[(Point[Any], Double)] = {
-//    val localIndex = packedPartition.indexes.filter(_.isInstanceOf[LocalMTreeIndex]).head
-//      .asInstanceOf[LocalMTreeIndex]
-//    val answers = localIndex.getResultWithThreshold(query, threshold).iterator
-//    answers
-//  }
 
   def localInsert(query: MetricData, packedPartition: PackedPartition):
   Iterator[(MetricData, Double)] = {

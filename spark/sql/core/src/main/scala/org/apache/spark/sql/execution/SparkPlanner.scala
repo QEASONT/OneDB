@@ -41,10 +41,7 @@ class SparkPlanner(
         Aggregation ::
         JoinSelection ::
         InMemoryScans ::
-        TrajectoryScans ::
-        MetricScans ::
-        AMDSScans ::
-        MBTScans ::
+
         ODBScans ::
         BasicOperators :: Nil)
 

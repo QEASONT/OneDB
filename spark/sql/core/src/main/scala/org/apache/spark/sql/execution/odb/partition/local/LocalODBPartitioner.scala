@@ -1,5 +1,5 @@
 /*
- *  Copyright 2023 by DIMS Project
+ *  Copyright 2025 by ODB Project
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ case class Bounds(min: Array[Double], max: Array[Double])
 
 case class LocalODBPartitioner(
                                 RtreeMaxEntriesPerNode: Int,
-                                metricData: Array[MetricData]) extends Logging{
+                                metricData: Array[MetricData]) extends Logging {
   val metricM = getMetricM()
   //  val BPlusTree = buildBPlusTree()
   //  val fineGrainedPoint = cutMetricDataToPoint()
@@ -62,47 +62,14 @@ case class LocalODBPartitioner(
   val k = 25
 
 
-  //  override def numPartitions: Int = RtreeNumOfPartition
-  //
-  //  override def getPartition(key: Any): Int = {
-  //    0
-  //
-  //  }
-
   def deleteMetricData(metricData: MetricData): List[(MetricData, Double)] = {
-    def findTargetMBR(mbrBounds: Array[(Rectangle, Int)], targetPoint: Point[Any]): Option[(Rectangle, Int)] = {
-      mbrBounds.find { case (mbr, _) => mbr.contains(targetPoint) }
-    }
 
-    def updateMBRAfterDelete(mbrBounds: Array[(Rectangle, Int)], targetPoint: Point[Any]): Array[(Rectangle, Int)] = {
-      mbrBounds.map { case (mbr, count) =>
-        if (mbr.contains(targetPoint)) {
-          val shrunkMBR = mbr.shrinkIfNecessary(targetPoint) // Assume shrinkIfNecessary adjusts MBR after point deletion
-          (shrunkMBR, Math.max(count - 1, 0))
-        } else {
-          (mbr, count)
-        }
-      }.filter(_._2 > 0) // Remove MBRs with count 0
-    }
 
     val res = metricM.zipWithIndex.map {
       case (metricValue, metricIndex) =>
         metricValue match {
           case 0 | 1 | 4 | 5 =>
-            // Rtree
-            // Step 1: Find the target MBR
             val targetPoint = metricData.points(metricIndex)
-            val targetMBR = findTargetMBR(mbrBoundsForest(metricIndex), targetPoint)
-
-            // Step 2: Update the MBR bounds
-            val updatedMBRs = targetMBR match {
-              case Some(_) =>
-                updateMBRAfterDelete(mbrBoundsForest(metricIndex), targetPoint)
-              case None =>
-                mbrBoundsForest(metricIndex) // No changes if point not found
-            }
-
-            // Step 3: Delete the point from the R-tree
             val deletedEntry = rTreeForest(metricIndex).delete((targetPoint.id.toInt, targetPoint))
             (metricData, if (deletedEntry != null) 0.0 else 1.0)
           case 2 | 3 =>
@@ -120,44 +87,14 @@ case class LocalODBPartitioner(
 
   def insertMetricData(metricData: MetricData): List[(MetricData, Double)] = {
 
-    def findTargetMBR(mbrBounds: Array[(Rectangle, Int)], newPoint: Point[Any]): Option[(Rectangle, Int)] = {
-      mbrBounds.find { case (mbr, _) => mbr.contains(newPoint) }
-    }
-
-    def updateMBR(mbrBounds: Array[(Rectangle, Int)], newPoint: Point[Any], metricIndex: Int, metricValue: Int): Array[(Rectangle, Int)] = {
-      mbrBounds.map { case (mbr, count) =>
-        if (mbr.contains(newPoint)) {
-          // Expand the MBR if necessary
-          val expandedMBR = mbr.expandToInclude(newPoint)
-          (expandedMBR, count + 1)
-        } else {
-          (mbr, count)
-        }
-      }
-    }
 
     val res = metricM.zipWithIndex.map {
       case (metricValue, metricIndex) =>
         metricValue match {
           case 0 | 1 | 4 | 5 =>
             // Rtree
-            // Step 1: Find the target MBR
             val newPoint = metricData.points(metricIndex)
-            val targetMBR = findTargetMBR(mbrBoundsForest(metricIndex), newPoint)
-
-            // Step 2: Update the MBR bounds or create a new one
-            val updatedMBRs = targetMBR match {
-              case Some((mbr, count)) =>
-                updateMBR(mbrBoundsForest(metricIndex), newPoint, metricIndex, metricValue)
-              case None =>
-                val newMBR = Rectangle(newPoint, newPoint)
-                mbrBoundsForest(metricIndex) :+ (newMBR, 1)
-            }
-
-            // Step 3: Construct the new entry
             val newEntry = (newPoint.id, newPoint)
-
-            // Step 4: Update the R-tree
             rTreeForest(metricIndex).insert(newEntry, RtreeMaxEntriesPerNode)
             (metricData, 0.0)
           case 2 | 3 =>
