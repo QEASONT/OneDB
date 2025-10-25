@@ -36,22 +36,13 @@ class SparkClient:
     def modify_configurations(server_ip, port, configuration):
         gateway = JavaGateway(gateway_parameters=GatewayParameters(address=server_ip))
         hello_app = gateway.entry_point
-        # 'SAMPLE_SIZE' = 10485760
-        # 'GLOBAL_INDEXED_PIVOT_COUNT' = 9
-        # 'RTREE_GLOBAL_MAX_ENTRIES_PER_NODE' = 5
-        # 'RTREE_LOCAL_MAX_ENTRIES_PER_NODE' = 5
-        # 'RTREE_GLOBAL_NUM_PARTITIONS' = 20
-        # 'RTREE_LOCAL_NUM_PARTITIONS' = 20
         value = hello_app.runSpark(
-            configuration["SAMPLE_SIZE"],
-            configuration["GLOBAL_INDEXED_PIVOT_COUNT"],
-            configuration["RTREE_GLOBAL_MAX_ENTRIES_PER_NODE"],
-            configuration["RTREE_LOCAL_MAX_ENTRIES_PER_NODE"],
-            configuration["RTREE_GLOBAL_NUM_PARTITIONS"],
-            configuration["RTREE_LOCAL_NUM_PARTITIONS"],
+            configuration["spark.odb.globalIndexedPivotCount"],
+            configuration["spark.odb.sampleSize"],
+            configuration["spark.sql.odb.shuffle.partitions"],
+            configuration["spark.sql.shuffle.partitions"],
+            configuration["spark.odb.estimatedRate"],
         )
-
-        
         return list(value)
 
 

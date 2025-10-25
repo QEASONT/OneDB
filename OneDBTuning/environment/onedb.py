@@ -72,7 +72,7 @@ class OneDBEnv(object):
         with open(best_now_path) as f:
             lines = f.readlines()
         if lines:
-            # 假设文件内容格式为 'construct_time,query_time,knn_time,rate'
+            
             best_now = lines[0].strip().split(",")
             construct_time_best = float(best_now[0])
             query_time_best = float(best_now[1])
@@ -87,11 +87,11 @@ class OneDBEnv(object):
         best_flag = False
         best_now_path = os.path.join(BEST_NOW, filename)
 
-        # 假设 external_metrics 顺序为 current_construct_time, current_query_time, current_knn_time
+        
         construct_time_best = external_metrics[0]
         query_time_best = external_metrics[1]
         knn_time_best = external_metrics[2]
-        # 计算综合比率（例如，假设我们将三个时间的加权平均作为指标）
+        
         rate = (construct_time_best + query_time_best + knn_time_best) / 3
 
         if os.path.exists(best_now_path):
@@ -102,7 +102,7 @@ class OneDBEnv(object):
                 rate_best_now = (
                     float(best_now[0]) + float(best_now[1]) + float(best_now[2])
                 ) / 3
-                if rate < rate_best_now:  # 假设时间越短越好
+                if rate < rate_best_now:  
                     best_flag = True
                     with open(best_now_path, "w") as f:
                         f.write(
@@ -192,7 +192,7 @@ class OneDBEnv(object):
         print(self.last_external_metrics)
         print("*****************************")
 
-        # 指标变化率
+        
         # delta_0_construct_time = (
         #     float((self.default_externam_metrics[0] - external_metrics[0]))
         #     / self.default_externam_metrics[0]
@@ -220,7 +220,7 @@ class OneDBEnv(object):
             / self.last_external_metrics[2]
         )
 
-        # 计算各个指标的奖励
+        
         # construct_time_reward = self._calculate_reward(
         #     delta_0_construct_time, delta_t_construct_time
         # )
@@ -229,7 +229,7 @@ class OneDBEnv(object):
         )
         knn_time_reward = self._calculate_reward(delta_0_knn_time, delta_t_knn_time)
 
-        # 总奖励
+        
         # reward = construct_time_reward + query_time_reward + knn_time_reward
         reward = query_time_reward + knn_time_reward
         self.score += reward

@@ -9,17 +9,22 @@ import org.apache.spark.sql.execution.odb.util.MetricRecord
 import java.util
 //import org.apache.spark.sql.tuning.{PerformanceReply, PerformanceRequest}
 
+
 object TuningMain {
-  def runSpark(sampleSize: Int,
-               globalIndexedPivotCount: Int,
-               rtreeGlobalMaxEntriesPerNode: Int,
-               rtreeLocalMaxEntriesPerNode: Int,
-               rtreeGlobalNumPartitions: Int,
-               rtreeLocalNumPartitions: Int): util.ArrayList[Long] = {
+  def runSpark(globalIndexedPivotCount: Int,
+               sampleSize: Int,
+               odbShufflePartitions: Int,
+               shufflePartitions: Int,
+               estimatedRate: Int): util.ArrayList[Long] = {
     val spark = SparkSession
       .builder()
       .master("local[*]")
       .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+      .config("spark.sql.odb.globalIndexedPivotCount", globalIndexedPivotCount)
+      .config("spark.sql.odb.sampleSize", sampleSize)
+      .config("spark.sql.odb.shuffle.partitions", odbShufflePartitions)
+      .config("spark.sql.shuffle.partitions", shufflePartitions)
+      .config("spark.sql.odb.estimatedRate", estimatedRate)
       .getOrCreate()
     import spark.implicits._
 
@@ -36,14 +41,6 @@ object TuningMain {
     val metricData = fileContents.zipWithIndex().filter(_._2 >= 3).map(MetricRecord.getMetric(_, metricM, metricMaxDis))
 
 
-    // Perform range search and KNN search
-
-
-    ODBConfigConstants.GLOBAL_INDEXED_PIVOT_COUNT = globalIndexedPivotCount
-    ODBConfigConstants.RTREE_GLOBAL_MAX_ENTRIES_PER_NODE = rtreeGlobalMaxEntriesPerNode
-    ODBConfigConstants.RTREE_LOCAL_MAX_ENTRIES_PER_NODE = rtreeLocalMaxEntriesPerNode
-    ODBConfigConstants.RTREE_GLOBAL_NUM_PARTITIONS = rtreeGlobalNumPartitions
-    ODBConfigConstants.RTREE_LOCAL_NUM_PARTITIONS = rtreeLocalNumPartitions
 
 
     val queryData = "examples/src/main/resources/dfood_q_copy.txt"

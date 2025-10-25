@@ -16,13 +16,13 @@ instance_name = ''
 
 
 KNOBS = [
-    'SAMPLE_SIZE',                # 1L * 10 * 1024 * 1024
-    'GLOBAL_INDEXED_PIVOT_COUNT', # 9
-    'RTREE_GLOBAL_MAX_ENTRIES_PER_NODE', # 5
-    'RTREE_LOCAL_MAX_ENTRIES_PER_NODE',  # 5
-    'RTREE_GLOBAL_NUM_PARTITIONS', # 20
-    'RTREE_LOCAL_NUM_PARTITIONS',  # 20
+    'spark.odb.globalIndexedPivotCount',
+    'spark.odb.sampleSize',
+    'spark.sql.odb.shuffle.partitions',
+    'spark.sql.shuffle.partitions',
+    'spark.odb.estimatedRate',
 ]
+
 
 
 KNOB_DETAILS = None
@@ -30,7 +30,7 @@ EXTENDED_KNOBS = None
 num_knobs = len(KNOBS)
 
 
-def init_knobs( num_more_knobs):
+def init_knobs(num_more_knobs):
     # global instance_name
     global memory_size
     global disk_size
@@ -38,18 +38,17 @@ def init_knobs( num_more_knobs):
     global EXTENDED_KNOBS
 
     KNOB_DETAILS = {
-        'SAMPLE_SIZE': ['integer', [1, 10 * 1024 * 1024, 10 * 1024 * 1024]],
-        'GLOBAL_INDEXED_PIVOT_COUNT': ['integer', [1, 20, 9]],
-        'RTREE_GLOBAL_MAX_ENTRIES_PER_NODE': ['integer', [1, 20, 5]],
-        'RTREE_LOCAL_MAX_ENTRIES_PER_NODE': ['integer', [1, 20, 5]],
-        'RTREE_GLOBAL_NUM_PARTITIONS': ['integer', [1, 40, 20]],
-        'RTREE_LOCAL_NUM_PARTITIONS': ['integer', [1, 30, 20]],
+        'spark.odb.globalIndexedPivotCount': ('integer', [300, 400, 500]),
+        'spark.odb.sampleSize': ('integer', [10000, 20000, 30000, 50000]),
+        'spark.sql.odb.shuffle.partitions': ('integer', [50, 100, 200, 300, 400, 500]),
+        'spark.sql.shuffle.partitions': ('integer', [50, 100, 200, 400, 500]),
+        'spark.odb.estimatedRate': ('enum', [0.1, 0.3, 0.5, 0.7, 0.9]),
     }
 
     # TODO: ADD Knobs HERE! Format is the same as the KNOB_DETAILS
     UNKNOWN = 0
     EXTENDED_KNOBS = {
-        
+
     }
     # ADD Other Knobs, NOT Random Selected
     i = 0
@@ -61,7 +60,6 @@ def init_knobs( num_more_knobs):
             i += 1
         else:
             break
-
 
 
 def get_init_knobs():
@@ -118,4 +116,3 @@ def save_knobs(knob, metrics, knob_file):
 
     with open(knob_file, 'a+') as f:
         f.write(result_str+'\n')
-
