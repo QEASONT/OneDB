@@ -36,15 +36,6 @@ import org.apache.spark.sql.catalyst.catalog.CatalogRelation
 import org.apache.spark.sql.catalyst.encoders._
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.aggregate._
-import org.apache.spark.sql.catalyst.expressions.dita.common.shape.{Point, Rectangle, Shape}
-import org.apache.spark.sql.catalyst.expressions.dita.common.trajectory.Trajectory
-import org.apache.spark.sql.catalyst.expressions.dita._
-import org.apache.spark.sql.catalyst.expressions.mchord.common.shape.{Point => MetricPoint}
-import org.apache.spark.sql.catalyst.expressions.mchord._
-import org.apache.spark.sql.catalyst.expressions.amds.common.shape.{Point => AMDSPoint}
-import org.apache.spark.sql.catalyst.expressions.amds._
-import org.apache.spark.sql.catalyst.expressions.mbt.common.shape.{Point => MBTPoint}
-import org.apache.spark.sql.catalyst.expressions.mbt._
 import org.apache.spark.sql.catalyst.expressions.odb.common.shape.{Point => ODBPoint}
 import org.apache.spark.sql.catalyst.expressions.odb._
 import org.apache.spark.sql.catalyst.expressions.odb.common.metric.MetricData

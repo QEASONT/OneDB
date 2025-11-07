@@ -17,7 +17,7 @@ package org.apache.spark.sql.execution.odb.partition.local
 
 import org.apache.spark.Partitioner
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.catalyst.expressions.dita.common.DITAConfigConstants
+
 import org.apache.spark.sql.catalyst.expressions.odb.common.ODBConfigConstants
 import org.apache.spark.sql.catalyst.expressions.odb.common.metric.MetricData
 import org.apache.spark.sql.catalyst.expressions.odb.common.shape.{Point, Rectangle}

@@ -26,10 +26,7 @@ import org.apache.spark.annotation.{Experimental, InterfaceStability}
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.analysis.{Analyzer, FunctionRegistry}
 import org.apache.spark.sql.catalyst.catalog._
-import org.apache.spark.sql.catalyst.expressions.dita.index.IndexRegistry
-import org.apache.spark.sql.catalyst.expressions.mchord.index.{IndexRegistry => MchordIndexRegistry}
-import org.apache.spark.sql.catalyst.expressions.amds.index.{IndexRegistry => AMDSIndexRegistry}
-import org.apache.spark.sql.catalyst.expressions.mbt.index.{IndexRegistry => MBTIndexRegistry}
+
 import org.apache.spark.sql.catalyst.expressions.odb.index.{IndexRegistry => ODBIndexRegistry}
 import org.apache.spark.sql.catalyst.optimizer.Optimizer
 import org.apache.spark.sql.catalyst.parser.ParserInterface
@@ -62,10 +59,6 @@ private[sql] class SessionState(
                                  val conf: SQLConf,
                                  val experimentalMethods: ExperimentalMethods,
                                  val functionRegistry: FunctionRegistry,
-                                 val indexRegistry: IndexRegistry,
-                                 val mchordIndexRegistry: MchordIndexRegistry,
-                                 val amdsIndexRegistry: AMDSIndexRegistry,
-                                 val mbtIndexRegistry: MBTIndexRegistry,
                                  val odbIndexRegistry: ODBIndexRegistry,
                                  val udfRegistration: UDFRegistration,
                                  val catalog: SessionCatalog,

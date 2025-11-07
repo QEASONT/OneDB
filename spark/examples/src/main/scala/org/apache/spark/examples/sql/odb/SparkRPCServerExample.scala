@@ -27,13 +27,16 @@ class App {
     "Hello, " + string
   }
 
-  def runSpark(sampleSize: Int,
-               globalIndexedPivotCount: Int,
-               rtreeGlobalMaxEntriesPerNode: Int,
-               rtreeLocalMaxEntriesPerNode: Int,
-               rtreeGlobalNumPartitions: Int,
-               rtreeLocalNumPartitions: Int
+  def runSpark(globalIndexedPivotCount: Int,
+               sampleSize: Int,
+               odbShufflePartitions: Int,
+               shufflePartitions: Int,
+               estimatedRate: Int
               ): util.ArrayList[Long] = {
-    TuningMain.runSpark(sampleSize, globalIndexedPivotCount, rtreeGlobalMaxEntriesPerNode, rtreeLocalMaxEntriesPerNode, rtreeGlobalNumPartitions, rtreeLocalNumPartitions)
+    TuningMain.runSpark(globalIndexedPivotCount,
+      sampleSize,
+      odbShufflePartitions,
+      shufflePartitions,
+      estimatedRate)
   }
 }

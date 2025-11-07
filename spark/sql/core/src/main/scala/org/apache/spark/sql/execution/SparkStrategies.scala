@@ -22,12 +22,7 @@ import org.apache.spark.sql.Strategy
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.encoders.RowEncoder
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.sql.catalyst.expressions.dita.common.trajectory.Trajectory
-import org.apache.spark.sql.catalyst.expressions.dita.{TrajectoryCircleRangeExpression, TrajectoryMBRRangeExpression, TrajectorySimilarityWithKNNExpression, TrajectorySimilarityWithThresholdExpression}
-import org.apache.spark.sql.catalyst.expressions.mchord.{
-  MetricSimilarityWithKNNExpression, MetricSimilarityRangeExpression,
-  MetricDeleteExpression, MetricInsertExpression
-}
+
 import org.apache.spark.sql.catalyst.expressions.odb.{ODBSimilarityWithKNNExpression, ODBSimilarityRangeExpression, ODBDeleteExpression, ODBInsertExpression}
 import org.apache.spark.sql.catalyst.expressions.odb.common.shape.{Point => ODBPoint}
 import org.apache.spark.sql.catalyst.planning._
